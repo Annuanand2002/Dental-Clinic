@@ -1,0 +1,83 @@
+.app-toast-host {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 28px;
+  z-index: 10050;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.app-toast {
+  pointer-events: auto;
+  max-width: min(420px, 100%);
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  box-shadow: 0 14px 40px -18px rgba(15, 23, 42, 0.55);
+  border: 1px solid transparent;
+  text-align: center;
+}
+
+.app-toast--success {
+  background: linear-gradient(180deg, #ecfdf5, #d1fae5);
+  color: #065f46;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.app-toast--error {
+  background: linear-gradient(180deg, #fef2f2, #fee2e2);
+  color: #991b1b;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.route-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(2px);
+}
+
+.route-loading-card {
+  min-width: 240px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 30px -24px rgba(15, 23, 42, 0.6);
+  padding: 16px 18px;
+  text-align: center;
+}
+
+.route-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 3px solid rgba(148, 163, 184, 0.45);
+  border-top-color: #4f46e5;
+  margin: 0 auto 10px;
+  animation: route-spin 0.9s linear infinite;
+}
+
+.route-loading-title {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.route-loading-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+@keyframes route-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

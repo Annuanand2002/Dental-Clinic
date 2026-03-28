@@ -1,0 +1,3220 @@
+<div class="shell" @pageEnter [class.sidebar-collapsed]="sidebarCollapsed" [class.dark-theme]="theme === 'dark'">
+  <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
+    <div class="brand">
+      <div class="logo" [class.has-logo]="!!organisation.logo" aria-hidden="true">
+        <img *ngIf="organisation.logo" [src]="organisation.logo" alt="Organisation logo" />
+      </div>
+      <div class="brand-text" *ngIf="!sidebarCollapsed">
+        <div class="name">{{ organisation.name || 'Dental Clinic' }}</div>
+        <div class="plan">Management</div>
+      </div>
+
+      <button
+        class="collapse-btn"
+        type="button"
+        (click)="toggleSidebar()"
+        [attr.aria-label]="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+      >
+        <span class="collapse-ic" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <div class="section-title" *ngIf="!sidebarCollapsed">MODULES</div>
+    <div class="sidebar-search" *ngIf="!sidebarCollapsed">
+      <input
+        type="search"
+        class="sidebar-search-input"
+        [(ngModel)]="sidebarSearchQuery"
+        placeholder="Search modules (e.g. transaction dashboard)"
+        autocomplete="off"
+        aria-label="Search sidebar modules"
+      />
+      <div class="sidebar-search-hits" *ngIf="sidebarSearchQuery.trim() && sidebarSearchMatches.length">
+        <button type="button" class="sidebar-search-hit" *ngFor="let hit of sidebarSearchMatches" (click)="navigateSidebarSearch(hit)">
+          {{ hit.pathLabel }}
+        </button>
+      </div>
+      <p class="sidebar-search-empty muted" *ngIf="sidebarSearchQuery.trim().length >= 1 && !sidebarSearchMatches.length">No matches</p>
+    </div>
+    <nav class="nav">
+      <ng-container *ngFor="let item of sidebarItems">
+        <button
+          class="nav-item"
+          type="button"
+          [class.active]="isSidebarParentActive(item)"
+          (click)="item.children ? toggleExpanded(item) : setActive(item.key)"
+          [attr.title]="sidebarCollapsed ? item.label : null"
+        >
+          <span class="nav-ic" aria-hidden="true">{{ item.iconText }}</span>
+          <span class="nav-text" *ngIf="!sidebarCollapsed">{{ item.label }}</span>
+          <span class="expand-ic" *ngIf="item.children && !sidebarCollapsed">{{ item.expanded ? '▼' : '▶' }}</span>
+        </button>
+        <ng-container *ngIf="item.children && item.expanded">
+          <button
+            class="nav-item sub-item"
+            type="button"
+            *ngFor="let child of item.children"
+            [class.active]="active === child.key"
+            (click)="setActive(child.key)"
+            [attr.title]="sidebarCollapsed ? child.label : null"
+          >
+            <span class="nav-ic" aria-hidden="true">{{ child.iconText }}</span>
+            <span class="nav-text" *ngIf="!sidebarCollapsed">{{ child.label }}</span>
+          </button>
+        </ng-container>
+      </ng-container>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="logout" type="button" (click)="logout()" [attr.title]="sidebarCollapsed ? 'Logout' : null">
+        <span class="nav-ic" aria-hidden="true">⎋</span>
+        <span class="nav-text" *ngIf="!sidebarCollapsed">Logout</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <header class="topbar">
+      <div class="page-title">
+        <div class="title">
+          {{ active === 'dashboard' ? 'Dashboard' : activeLabel }}
+        </div>
+        <div class="crumb">Overview</div>
+      </div>
+    </header>
+
+    <section *ngIf="active === 'dashboard'" class="dashboard-v2 main-dashboard">
+      <header class="main-dash-header" @cardStagger>
+        <div>
+          <p class="hero-kicker">Operations overview</p>
+          <h1>Welcome back, {{ user.username || 'Clinic Admin' }}</h1>
+          <p class="hero-sub muted">
+            Unified view of patients, appointments, finances, inventory, and documents. Adjust filters and apply to refresh ledger figures; doctor and inventory category update charts instantly from the loaded dataset.
+          </p>
+        </div>
+        <div class="main-dash-header-actions">
+          <button
+            type="button"
+            class="btn-primary main-dash-refresh"
+            (click)="refreshMainDashboard()"
+            [disabled]="mainDashboardLoading"
+          >
+            <span *ngIf="!mainDashboardLoading">Refresh all</span>
+            <span *ngIf="mainDashboardLoading">Loading…</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="main-dash-filters glass-card" @cardStagger>
+        <div class="main-dash-filters-grid">
+          <div class="form-group">
+            <label>Period</label>
+            <select [(ngModel)]="mainDashboardFilters.preset" (change)="onMainDashboardPresetChange()">
+              <option [ngValue]="'30d'">Last 30 days</option>
+              <option [ngValue]="'6m'">Last 6 months</option>
+              <option [ngValue]="'12m'">Last 12 months</option>
+              <option [ngValue]="'ytd'">Year to date</option>
+              <option [ngValue]="'custom'">Custom range</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>From</label>
+            <input type="date" [(ngModel)]="mainDashboardFilters.fromDate" (change)="onMainDashboardDateEdited()" />
+          </div>
+          <div class="form-group">
+            <label>To</label>
+            <input type="date" [(ngModel)]="mainDashboardFilters.toDate" (change)="onMainDashboardDateEdited()" />
+          </div>
+          <div class="form-group">
+            <label>Doctor (appointments)</label>
+            <select [(ngModel)]="mainDashboardFilters.doctorId">
+              <option [ngValue]="null">All doctors</option>
+              <option *ngFor="let d of activeDoctorRows" [ngValue]="d.id">{{ d.username }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Inventory category</label>
+            <select [(ngModel)]="mainDashboardFilters.inventoryCategory">
+              <option *ngFor="let c of inventoryCategoryOptions" [ngValue]="c.value">{{ c.label }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Appointment trend</label>
+            <select [(ngModel)]="mainDashboardAppointmentGranularity">
+              <option [ngValue]="'daily'">Daily</option>
+              <option [ngValue]="'weekly'">Weekly</option>
+            </select>
+          </div>
+          <div class="form-group main-dash-filter-actions">
+            <label class="visually-hidden">Apply</label>
+            <button type="button" class="btn-primary" (click)="onMainDashboardFilterApply()" [disabled]="mainDashboardLoading">
+              Apply &amp; reload data
+            </button>
+          </div>
+        </div>
+        <p class="muted small" *ngIf="mainDashboardPeriodLabel">Active range: {{ mainDashboardPeriodLabel }}</p>
+      </section>
+
+      <div class="main-dash-kpi-row" @cardStagger>
+        <ng-container *ngIf="!mainDashboardLoading">
+          <article class="glass-card main-dash-kpi">
+            <div class="main-dash-kpi-label">Total patients</div>
+            <div class="main-dash-kpi-value">{{ mainDashboardPatientTotal | number }}</div>
+            <div class="main-dash-kpi-sub muted">Registered in the system</div>
+          </article>
+          <article class="glass-card main-dash-kpi accent-appt">
+            <div class="main-dash-kpi-label">Today’s appointments</div>
+            <div class="main-dash-kpi-value">{{ mainDashTodayAppointments.length | number }}</div>
+            <div class="main-dash-kpi-sub muted">{{ mainDashTodayYmd }} · filtered by doctor if selected</div>
+          </article>
+          <article class="glass-card main-dash-kpi accent-income">
+            <div class="main-dash-kpi-label">Total income</div>
+            <div class="main-dash-kpi-value pos">{{ formatMoney(mainDashboardFinance?.totalIncome ?? 0) }}</div>
+            <div class="main-dash-kpi-sub muted">Ledger income in range</div>
+          </article>
+          <article class="glass-card main-dash-kpi accent-expense">
+            <div class="main-dash-kpi-label">Total expenses</div>
+            <div class="main-dash-kpi-value neg">{{ formatMoney(mainDashboardFinance?.totalExpense ?? 0) }}</div>
+            <div class="main-dash-kpi-sub muted">Ledger expenses in range</div>
+          </article>
+          <article class="glass-card main-dash-kpi accent-balance">
+            <div class="main-dash-kpi-label">Current balance</div>
+            <div
+              class="main-dash-kpi-value"
+              [class.pos]="(mainDashboardFinance?.balance ?? 0) >= 0"
+              [class.neg]="(mainDashboardFinance?.balance ?? 0) < 0"
+            >
+              {{ formatMoney(mainDashboardFinance?.balance ?? 0) }}
+            </div>
+            <div class="main-dash-kpi-sub muted">Income − expenses (range)</div>
+          </article>
+          <article class="glass-card main-dash-kpi accent-docs">
+            <div class="main-dash-kpi-label">Documents</div>
+            <div class="main-dash-kpi-value">{{ mainDashboardDocumentTotal | number }}</div>
+            <div class="main-dash-kpi-sub muted">Files with metadata (all types)</div>
+          </article>
+        </ng-container>
+        <ng-container *ngIf="mainDashboardLoading">
+          <div class="glass-card main-dash-kpi skeleton-kpi" *ngFor="let _ of mainDashboardKpiSkeletonSlots">
+            <div class="skeleton-line w-40"></div>
+            <div class="skeleton-line w-60 lg"></div>
+            <div class="skeleton-line w-80 sm"></div>
+          </div>
+        </ng-container>
+      </div>
+
+      <section class="main-dash-charts-grid" @cardStagger>
+        <article class="glass-card main-dash-chart-wide" [class.main-dash-chart-dim]="mainDashboardLoading">
+          <div class="main-dash-chart-head">
+            <div>
+              <h3 class="inventory-section-title" style="margin:0">Income vs expense</h3>
+              <p class="muted small">Monthly totals from the transaction ledger for the selected range.</p>
+            </div>
+          </div>
+          <div *ngIf="!mainDashboardLoading && mainDashFinanceChartRows.length" class="financial-chart financial-chart-triple main-dash-fin-triple">
+            <div
+              *ngFor="let row of mainDashFinanceChartRows"
+              class="financial-chart-col"
+              [class.financial-chart-col-active]="mainFinDashActiveMonth === row.month"
+              (mouseenter)="showMainFinDashTooltip($event, row)"
+              (mousemove)="moveMainFinDashTooltip($event)"
+              (mouseleave)="hideMainFinDashTooltip()"
+            >
+              <div class="financial-chart-bars triple">
+                <div class="financial-bar income" [style.height.%]="mainDashChartBarPct(row.income)"></div>
+                <div class="financial-bar expense" [style.height.%]="mainDashChartBarPct(row.expense)"></div>
+                <div
+                  class="financial-bar net"
+                  [class.net-pos]="row.net >= 0"
+                  [class.net-neg]="row.net < 0"
+                  [style.height.%]="mainDashChartNetBarPct(row.net)"
+                ></div>
+              </div>
+              <span class="financial-chart-mo">{{ row.month }}</span>
+            </div>
+          </div>
+          <div class="financial-chart-title" *ngIf="!mainDashboardLoading && mainDashFinanceChartRows.length">Net trend</div>
+          <svg
+            viewBox="0 0 520 120"
+            class="financial-line-svg financial-line-svg-interactive"
+            *ngIf="!mainDashboardLoading && mainDashFinanceChartRows.length"
+            aria-label="Net trend"
+          >
+            <polyline class="grid" points="14,100 506,100"></polyline>
+            <polyline class="line net-line" [attr.points]="mainDashFinancialNetPolyline"></polyline>
+            <circle
+              *ngFor="let pt of mainDashFinancialNetPoints"
+              class="net-point"
+              [attr.cx]="pt.x"
+              [attr.cy]="pt.y"
+              r="5"
+              (mouseenter)="showMainNetPointTooltip($event, pt.month, pt.net)"
+              (mousemove)="moveMainFinDashTooltip($event)"
+              (mouseleave)="hideMainFinDashTooltip()"
+            />
+          </svg>
+          <p *ngIf="!mainDashboardLoading && !mainDashFinanceChartRows.length" class="muted" style="padding:16px">No ledger activity in this period.</p>
+          <div *ngIf="mainDashboardLoading" class="main-dash-chart-skeleton">
+            <div class="skeleton-block tall"></div>
+          </div>
+        </article>
+
+        <article class="glass-card main-dash-chart-side" [class.main-dash-chart-dim]="mainDashboardLoading">
+          <h3 class="inventory-section-title">Appointment trend</h3>
+          <p class="muted small">
+            {{ mainDashboardAppointmentGranularity === 'daily' ? 'Count per day' : 'Count per week (Mon start)' }} in range · doctor filter applies.
+          </p>
+          <div class="fin-hbar-list" *ngIf="!mainDashboardLoading">
+            <div class="fin-hbar-row" *ngFor="let row of mainDashAppointmentTrendRows">
+              <span class="fin-hbar-label" [title]="row.label">{{ row.label }}</span>
+              <div class="fin-hbar-track">
+                <span class="fin-hbar-fill report-hbar-a" [style.width.%]="row.pct"></span>
+              </div>
+              <span class="fin-hbar-val">{{ row.count }}</span>
+            </div>
+            <p *ngIf="mainDashAppointmentTrendRows.length === 0" class="muted" style="padding:8px 0">No appointments in this range.</p>
+          </div>
+          <div *ngIf="mainDashboardLoading" class="skeleton-block med"></div>
+        </article>
+
+        <article class="glass-card main-dash-chart-side" [class.main-dash-chart-dim]="mainDashboardLoading">
+          <h3 class="inventory-section-title">Inventory · {{ mainDashboardFilters.inventoryCategory ? 'Items (category)' : 'By category' }}</h3>
+          <p class="muted small">Stock quantity distribution. Category filter narrows low-stock and expiry lists below.</p>
+          <div class="fin-hbar-list" *ngIf="!mainDashboardLoading">
+            <div class="fin-hbar-row" *ngFor="let row of mainDashInventoryCategoryDist">
+              <span class="fin-hbar-label" [title]="row.label">{{ row.label }}</span>
+              <div class="fin-hbar-track">
+                <span class="fin-hbar-fill report-hbar-c" [style.width.%]="row.pct"></span>
+              </div>
+              <span class="fin-hbar-val">{{ row.value }}</span>
+            </div>
+            <p *ngIf="mainDashInventoryCategoryDist.length === 0" class="muted" style="padding:8px 0">No inventory data.</p>
+          </div>
+          <div *ngIf="mainDashboardLoading" class="skeleton-block med"></div>
+        </article>
+
+        <article class="glass-card main-dash-chart-side" [class.main-dash-chart-dim]="mainDashboardLoading">
+          <h3 class="inventory-section-title">Income by payment method</h3>
+          <p class="muted small">From transactions in range (not filtered by doctor).</p>
+          <div class="fin-hbar-list" *ngIf="!mainDashboardLoading && mainDashboardFinance?.incomeByPaymentMethod?.length">
+            <div class="fin-hbar-row" *ngFor="let m of mainDashboardFinance?.incomeByPaymentMethod || []">
+              <span class="fin-hbar-label">{{ formatPaymentMethodLabel(m.method) }}</span>
+              <div class="fin-hbar-track">
+                <span class="fin-hbar-fill income-fill" [style.width.%]="hBarPct(m.amount, mainDashFinancialPaymentMethodMax)"></span>
+              </div>
+              <span class="fin-hbar-val">{{ formatMoney(m.amount) }}</span>
+            </div>
+          </div>
+          <p *ngIf="!mainDashboardLoading && !(mainDashboardFinance?.incomeByPaymentMethod?.length)" class="muted" style="padding:8px 0">No income rows.</p>
+          <div *ngIf="mainDashboardLoading" class="skeleton-block med"></div>
+        </article>
+
+        <article class="glass-card main-dash-chart-side" [class.main-dash-chart-dim]="mainDashboardLoading">
+          <h3 class="inventory-section-title">Expenses by category</h3>
+          <p class="muted small">Expense ledger in range.</p>
+          <div class="fin-hbar-list" *ngIf="!mainDashboardLoading && mainDashboardFinance?.expenseByCategory?.length">
+            <div class="fin-hbar-row" *ngFor="let c of mainDashboardFinance?.expenseByCategory || []">
+              <span class="fin-hbar-label">{{ c.category }}</span>
+              <div class="fin-hbar-track">
+                <span class="fin-hbar-fill expense-fill" [style.width.%]="hBarPct(c.amount, mainDashFinancialCategoryMax)"></span>
+              </div>
+              <span class="fin-hbar-val">{{ formatMoney(c.amount) }}</span>
+            </div>
+          </div>
+          <p *ngIf="!mainDashboardLoading && !(mainDashboardFinance?.expenseByCategory?.length)" class="muted" style="padding:8px 0">No expenses.</p>
+          <div *ngIf="mainDashboardLoading" class="skeleton-block med"></div>
+        </article>
+      </section>
+
+      <section class="main-dash-lower-grid" @cardStagger>
+        <article class="glass-card main-dash-table-card" [class.main-dash-chart-dim]="mainDashboardLoading">
+          <div class="main-dash-chart-head">
+            <h3 class="inventory-section-title" style="margin:0">Today &amp; upcoming</h3>
+            <span class="pill">{{ mainDashUpcomingAppointments.length }} in range (from today)</span>
+          </div>
+          <p class="muted small">Today’s slots first; then future dates through the selected end date.</p>
+          <div class="table-wrap" *ngIf="!mainDashboardLoading">
+            <table class="register-table main-dash-appt-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Patient</th>
+                  <th>Doctor</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let a of mainDashTodayAppointments">
+                  <td>{{ a.appointmentDate }} <span class="pill inline-pill">Today</span></td>
+                  <td>{{ a.startTime }} – {{ a.endTime }}</td>
+                  <td>{{ a.patientName }}</td>
+                  <td>{{ a.doctorName }}</td>
+                  <td>{{ a.status }}</td>
+                </tr>
+                <tr *ngFor="let a of mainDashUpcomingAppointments">
+                  <td>{{ a.appointmentDate }}</td>
+                  <td>{{ a.startTime }} – {{ a.endTime }}</td>
+                  <td>{{ a.patientName }}</td>
+                  <td>{{ a.doctorName }}</td>
+                  <td>{{ a.status }}</td>
+                </tr>
+                <tr *ngIf="mainDashTodayAppointments.length === 0 && mainDashUpcomingAppointments.length === 0">
+                  <td colspan="5" class="muted" style="text-align:center; padding:20px;">No upcoming appointments in this view.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div *ngIf="mainDashboardLoading" class="skeleton-block tall"></div>
+        </article>
+
+        <article class="glass-card main-dash-alerts" [class.main-dash-chart-dim]="mainDashboardLoading">
+          <h3 class="inventory-section-title">Inventory alerts</h3>
+          <p class="muted small">Low stock vs min level · batches expiring soon.</p>
+          <div *ngIf="!mainDashboardLoading">
+            <h4 class="main-dash-alert-sub">Low stock</h4>
+            <ul class="main-dash-alert-list">
+              <li *ngFor="let it of mainDashInventoryLowStockFiltered">
+                <strong>{{ it.name }}</strong>
+                <span class="muted">{{ it.totalQuantity }} {{ it.unit }} (min {{ it.minStock }})</span>
+              </li>
+              <li *ngIf="mainDashInventoryLowStockFiltered.length === 0" class="muted">None in this category.</li>
+            </ul>
+            <h4 class="main-dash-alert-sub">Expiring (≤ {{ mainDashboardInventoryFull?.expiringWithinDays || '—' }} days)</h4>
+            <ul class="main-dash-alert-list">
+              <li *ngFor="let b of mainDashInventoryExpiringFiltered">
+                <strong>{{ b.itemName }}</strong>
+                <span class="muted">Qty {{ b.quantity }} · exp {{ b.expiryDate || '—' }}</span>
+              </li>
+              <li *ngIf="mainDashInventoryExpiringFiltered.length === 0" class="muted">None in this category.</li>
+            </ul>
+          </div>
+          <div *ngIf="mainDashboardLoading" class="skeleton-block tall"></div>
+        </article>
+      </section>
+
+      <div
+        class="fin-floating-tooltip"
+        *ngIf="mainFinDashTooltip.show"
+        [style.left.px]="mainFinDashTooltip.x"
+        [style.top.px]="mainFinDashTooltip.y"
+      >
+        {{ mainFinDashTooltip.text }}
+      </div>
+    </section>
+
+    <section class="appointment-page" *ngIf="active === 'appointment-register'" @cardStagger>
+      <aside class="appointment-filter">
+        <h4>Appointment Filters</h4>
+        <div class="appointment-filter-actions">
+          <button class="btn-primary" type="button" (click)="openCreateAppointment()">+ New Appointment</button>
+          <button class="btn-icon ghost" type="button" (click)="clearAppointmentFilters()">Clear Filters</button>
+        </div>
+        <div class="form-group">
+          <label>Search</label>
+          <input type="text" [(ngModel)]="appointmentSearch" (input)="onAppointmentSearchInput()" placeholder="Doctor, patient, title..." />
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" [(ngModel)]="appointmentDateFilter" (change)="applyAppointmentFilters()" />
+        </div>
+        <div class="form-group">
+          <label>Month</label>
+          <input type="month" [(ngModel)]="appointmentMonthFilter" (change)="applyAppointmentFilters()" />
+        </div>
+        <div class="muted" style="font-size:12px;">Tip: click any row to load that date in the Day Schedule panel.</div>
+      </aside>
+
+      <section class="appointment-calendar">
+        <div class="appointment-head">
+          <h3>Appointments List</h3>
+          <span class="pill">{{ appointmentPagination.total }} appointments</span>
+        </div>
+        <div class="muted" style="margin-bottom:8px;">
+          Current month: {{ currentCalendarMonthLabel }}
+        </div>
+        <div class="table-wrap">
+          <table class="register-table appointment-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Patient</th>
+                <th>Doctor</th>
+                <th>Status</th>
+                <th>Title</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let item of appointmentRows"
+                (click)="selectAppointmentDate(item.appointmentDate)"
+                [style.background]="selectedAppointmentDate === item.appointmentDate ? 'rgba(79,70,229,0.1)' : null"
+              >
+                <td>{{ item.appointmentDate }}</td>
+                <td>{{ item.startTime }} - {{ item.endTime }}</td>
+                <td>{{ item.patientName }}</td>
+                <td>{{ item.doctorName }}</td>
+                <td><span class="pill">{{ item.status }}</span></td>
+                <td>{{ item.title || 'Appointment' }}</td>
+              </tr>
+              <tr *ngIf="appointmentRows.length === 0">
+                <td colspan="6" class="muted" style="padding:14px; text-align:center;">No data is present.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" aria-label="Appointments pagination">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta">Page {{ appointmentPagination.page }} of {{ appointmentPagination.totalPages }}</span>
+            <div class="table-footer-controls">
+              <button class="table-footer-btn" type="button" (click)="changeAppointmentPage('prev')" [disabled]="appointmentPagination.page <= 1">Previous</button>
+              <button class="table-footer-btn" type="button" (click)="changeAppointmentPage('next')" [disabled]="appointmentPagination.page >= appointmentPagination.totalPages">Next</button>
+              <input type="number" min="1" [max]="appointmentPagination.totalPages" [(ngModel)]="appointmentPageInput" class="table-footer-input" title="Go to page" />
+              <button class="table-footer-btn primary" type="button" (click)="jumpAppointmentPage()">Go</button>
+            </div>
+          </div>
+        </footer>
+      </section>
+
+      <aside class="appointment-details">
+        <h4>Day Schedule</h4>
+        <div class="muted">{{ selectedAppointmentDateLabel }}</div>
+        <div class="schedule-item" *ngFor="let item of selectedDateAppointments">
+          <div class="schedule-title">{{ item.title || 'Appointment' }}</div>
+          <div class="schedule-meta">{{ item.startTime }} - {{ item.endTime }}</div>
+          <div class="schedule-meta">Dr: {{ item.doctorName }}</div>
+          <div class="schedule-meta">Patient: {{ item.patientName }}</div>
+          <div>
+            <label [attr.for]="'appt-status-' + item.id">Status</label>
+            <select
+              [id]="'appt-status-' + item.id"
+              [value]="item.status"
+              (change)="updateAppointmentStatus(item, $any($event.target).value)"
+              [disabled]="appointmentStatusUpdatingId === item.id"
+            >
+              <option value="scheduled">scheduled</option>
+              <option value="completed">completed</option>
+              <option value="cancelled">cancelled</option>
+              <option value="no_show">no_show</option>
+            </select>
+          </div>
+          <div class="row-actions">
+            <button class="btn-icon ghost" type="button" (click)="openEditAppointment(item)">Edit</button>
+            <button class="btn-icon ghost" type="button" (click)="deleteAppointment(item)">Delete</button>
+          </div>
+        </div>
+        <div class="muted" *ngIf="selectedDateAppointments.length === 0">No data is present.</div>
+      </aside>
+
+      <div class="doctor-modal-backdrop" *ngIf="appointmentFormOpen">
+        <div class="doctor-modal">
+          <h3>{{ editingAppointmentId ? 'Modify Appointment' : 'Create Appointment' }}</h3>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>Patient</label>
+              <select [(ngModel)]="appointmentForm.patientId">
+                <option [ngValue]="null">Select patient</option>
+                <option *ngFor="let p of patientRows" [ngValue]="p.id">{{ p.username }} ({{ p.email }})</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Doctor</label>
+              <select [(ngModel)]="appointmentForm.doctorId">
+                <option [ngValue]="null">Select doctor</option>
+                <option *ngFor="let d of activeDoctorRows" [ngValue]="d.id">{{ d.username }} ({{ d.specialization }})</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Date</label>
+              <input type="date" [(ngModel)]="appointmentForm.appointmentDate" />
+            </div>
+            <div class="form-group">
+              <label>Start Time</label>
+              <input type="time" [(ngModel)]="appointmentForm.startTime" />
+            </div>
+            <div class="form-group">
+              <label>End Time</label>
+              <input type="time" [(ngModel)]="appointmentForm.endTime" />
+            </div>
+            <div class="form-group">
+              <label>Status</label>
+              <select [(ngModel)]="appointmentForm.status">
+                <option value="scheduled">scheduled</option>
+                <option value="completed">completed</option>
+                <option value="cancelled">cancelled</option>
+                <option value="no_show">no_show</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" [(ngModel)]="appointmentForm.title" placeholder="Tooth Extraction" />
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input type="text" [(ngModel)]="appointmentForm.description" placeholder="Reason / notes" />
+            </div>
+          </div>
+          <div *ngIf="appointmentFormError" class="save-error">{{ appointmentFormError }}</div>
+          <div class="doctor-modal-actions">
+            <button class="btn-primary" type="button" [disabled]="appointmentSubmitting" (click)="saveAppointment()">
+              {{ appointmentSubmitting ? 'Saving...' : (editingAppointmentId ? 'Update Appointment' : 'Create Appointment') }}
+            </button>
+            <button class="btn-icon ghost" type="button" (click)="closeAppointmentForm()">Close</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="inventory-page" *ngIf="active === 'inventory-register'" @cardStagger>
+      <div class="inventory-page-head">
+        <div class="inventory-page-head-row">
+          <h2>Inventory — Register</h2>
+          <button
+            type="button"
+            class="inventory-help-btn"
+            (click)="openInventoryHelp()"
+            aria-label="How inventory works"
+            title="How inventory works"
+          >
+            <span class="inventory-help-ic" aria-hidden="true">?</span>
+          </button>
+        </div>
+        <p class="muted">Manage items, receive stock, issue stock (FIFO), view balances and movement history.</p>
+      </div>
+
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">Inventory items</h3>
+        <div class="inventory-toolbar">
+          <input
+            type="text"
+            class="inventory-search"
+            [(ngModel)]="inventoryRegisterSearch"
+            (input)="onInventoryRegisterSearchInput()"
+            placeholder="Search by name..."
+          />
+          <select class="inventory-select" [(ngModel)]="inventoryCategoryFilter" (change)="applyInventoryCategoryFilter()">
+            <option *ngFor="let c of inventoryCategoryOptions" [ngValue]="c.value">{{ c.label }}</option>
+          </select>
+          <button class="btn-primary" type="button" (click)="openCreateInventoryItem()">+ Add item</button>
+        </div>
+        <div class="table-wrap">
+          <table class="register-table inventory-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Unit</th>
+                <th>Min stock</th>
+                <th>On hand</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of inventoryRegisterItems; let i = index">
+                <td>{{ (inventoryRegisterPagination.page - 1) * inventoryRegisterPagination.limit + i + 1 }}</td>
+                <td>{{ row.name }}</td>
+                <td>{{ row.category }}</td>
+                <td>{{ row.unit || '—' }}</td>
+                <td>{{ row.minStock }}</td>
+                <td>{{ row.totalQuantity != null ? row.totalQuantity : '—' }}</td>
+                <td>{{ row.isActive ? 'Yes' : 'No' }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-icon ghost" type="button" title="Edit" (click)="openEditInventoryItem(row)">✎</button>
+                    <button class="btn-icon ghost" type="button" title="Delete" (click)="deleteInventoryItem(row)">🗑</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="inventoryRegisterItems.length === 0">
+                <td colspan="8" class="muted" style="text-align: center; padding: 18px">No items yet. Add an item to begin.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" *ngIf="inventoryRegisterPagination.totalPages > 0">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta"
+              >Page {{ inventoryRegisterPagination.page }} of {{ inventoryRegisterPagination.totalPages }}</span
+            >
+            <div class="table-footer-controls">
+              <button
+                class="table-footer-btn"
+                type="button"
+                (click)="changeInventoryRegisterPage('prev')"
+                [disabled]="inventoryRegisterPagination.page <= 1"
+              >
+                Previous
+              </button>
+              <button
+                class="table-footer-btn"
+                type="button"
+                (click)="changeInventoryRegisterPage('next')"
+                [disabled]="inventoryRegisterPagination.page >= inventoryRegisterPagination.totalPages"
+              >
+                Next
+              </button>
+              <input
+                type="number"
+                min="1"
+                [max]="inventoryRegisterPagination.totalPages"
+                [(ngModel)]="inventoryRegisterPageInput"
+                class="table-footer-input"
+              />
+              <button class="table-footer-btn primary" type="button" (click)="jumpInventoryRegisterPage()">Go</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+
+      <div class="inventory-two-col">
+        <article class="glass-card inventory-section">
+          <h3 class="inventory-section-title">Add stock (purchase)</h3>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>Item</label>
+              <select [(ngModel)]="purchaseForm.itemId">
+                <option [ngValue]="null">Select item</option>
+                <option *ngFor="let opt of inventoryItemSelectOptions" [ngValue]="opt.id">{{ opt.name }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Quantity</label>
+              <input type="number" min="1" step="1" [(ngModel)]="purchaseForm.quantity" />
+            </div>
+            <div class="form-group">
+              <label>Purchase date</label>
+              <input type="date" [(ngModel)]="purchaseForm.purchaseDate" />
+            </div>
+            <div class="form-group">
+              <label>Supplier</label>
+              <input type="text" [(ngModel)]="purchaseForm.supplierName" placeholder="Supplier name" />
+            </div>
+            <div class="form-group">
+              <label>Price</label>
+              <input type="number" min="0" step="0.01" [(ngModel)]="purchaseForm.purchasePrice" placeholder="0.00" />
+            </div>
+            <div class="form-group">
+              <label>Expiry date</label>
+              <input type="date" [(ngModel)]="purchaseForm.expiryDate" />
+            </div>
+            <div class="form-group full-width">
+              <label>Batch number (optional)</label>
+              <input type="text" [(ngModel)]="purchaseForm.batchNumber" placeholder="Lot / batch" />
+            </div>
+          </div>
+          <div *ngIf="purchaseError" class="save-error">{{ purchaseError }}</div>
+          <button class="btn-primary" type="button" [disabled]="purchaseSubmitting" (click)="submitPurchase()">
+            {{ purchaseSubmitting ? 'Saving…' : 'Add stock' }}
+          </button>
+        </article>
+
+        <article class="glass-card inventory-section">
+          <h3 class="inventory-section-title">Use stock</h3>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>Item</label>
+              <select [(ngModel)]="useForm.itemId" (ngModelChange)="onUseItemSelectChange()">
+                <option [ngValue]="null">Select item</option>
+                <option *ngFor="let opt of inventoryItemSelectOptions" [ngValue]="opt.id">{{ opt.name }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Quantity</label>
+              <input type="number" min="1" step="1" [(ngModel)]="useForm.quantity" />
+            </div>
+          </div>
+          <p class="inventory-available" *ngIf="useForm.itemId">
+            <strong>Available:</strong> {{ useAvailableQty }}
+            <span *ngIf="useStockSubmitDisabled && useForm.quantity >= 1" class="inventory-warn"> — insufficient stock</span>
+          </p>
+          <div *ngIf="useError" class="save-error">{{ useError }}</div>
+          <button
+            class="btn-primary"
+            type="button"
+            [disabled]="useSubmitting || useStockSubmitDisabled"
+            (click)="submitUseStock()"
+          >
+            {{ useSubmitting ? 'Processing…' : 'Use stock' }}
+          </button>
+        </article>
+      </div>
+
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">Stock view</h3>
+        <p class="muted small">Total quantity per item. Expand a row for batch details (expiry, quantity).</p>
+        <div class="table-wrap">
+          <table class="register-table inventory-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Category</th>
+                <th>Total qty</th>
+                <th>Min</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <ng-container *ngFor="let s of stockViewSummary">
+                <tr [class.row-alert-low]="s.isLowStock">
+                  <td>{{ s.name }}</td>
+                  <td>{{ s.category }}</td>
+                  <td>{{ s.totalQuantity }}</td>
+                  <td>{{ s.minStock }}</td>
+                  <td>
+                    <button class="btn-icon ghost" type="button" (click)="toggleStockBatches(s.itemId)">
+                      {{ stockViewExpandedId === s.itemId ? 'Hide batches' : 'Batches' }}
+                    </button>
+                  </td>
+                </tr>
+                <tr *ngIf="stockViewExpandedId === s.itemId" class="batch-detail-row">
+                  <td colspan="5">
+                    <table class="batch-nested">
+                      <thead>
+                        <tr>
+                          <th>Batch</th>
+                          <th>Qty</th>
+                          <th>Expiry</th>
+                          <th>Purchase</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr *ngIf="stockViewBatches[s.itemId] === undefined">
+                          <td colspan="4" class="muted">Loading…</td>
+                        </tr>
+                        <tr *ngFor="let b of stockViewBatches[s.itemId] || []">
+                          <td>{{ b.batchNumber || '—' }}</td>
+                          <td>{{ b.quantity }}</td>
+                          <td>{{ b.expiryDate || '—' }}</td>
+                          <td>{{ b.purchaseDate || '—' }}</td>
+                        </tr>
+                        <tr *ngIf="stockViewBatches[s.itemId] !== undefined && (stockViewBatches[s.itemId] || []).length === 0">
+                          <td colspan="4" class="muted">No batch rows (qty may be zero).</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </ng-container>
+              <tr *ngIf="stockViewSummary.length === 0">
+                <td colspan="5" class="muted" style="text-align: center; padding: 18px">No stock data.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">Stock movement history</h3>
+        <div class="inventory-toolbar">
+          <select class="inventory-select" [(ngModel)]="movementFilters.itemId">
+            <option value="">All items</option>
+            <option *ngFor="let opt of inventoryItemSelectOptions" [value]="opt.id">{{ opt.name }}</option>
+          </select>
+          <input type="date" [(ngModel)]="movementFilters.fromDate" />
+          <input type="date" [(ngModel)]="movementFilters.toDate" />
+          <button class="btn-primary" type="button" (click)="applyMovementFilters()">Apply filters</button>
+        </div>
+        <div class="table-wrap">
+          <table class="register-table inventory-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Type</th>
+                <th>Qty</th>
+                <th>Date</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let m of movementRows" [class.movement-in]="m.type === 'IN'" [class.movement-out]="m.type === 'OUT'">
+                <td>{{ m.itemName }}</td>
+                <td>
+                  <span class="inv-type-pill" [class.in]="m.type === 'IN'" [class.out]="m.type === 'OUT'">{{ m.type }}</span>
+                </td>
+                <td>{{ m.quantity }}</td>
+                <td>{{ formatMovementDate(m.createdAt) }}</td>
+                <td>{{ formatMovementReference(m) }}</td>
+              </tr>
+              <tr *ngIf="movementRows.length === 0">
+                <td colspan="5" class="muted" style="text-align: center; padding: 18px">No movements found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" *ngIf="movementPagination.totalPages > 0">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta">Page {{ movementPagination.page }} of {{ movementPagination.totalPages }}</span>
+            <div class="table-footer-controls">
+              <button class="table-footer-btn" type="button" (click)="changeMovementPage('prev')" [disabled]="movementPagination.page <= 1">
+                Previous
+              </button>
+              <button
+                class="table-footer-btn"
+                type="button"
+                (click)="changeMovementPage('next')"
+                [disabled]="movementPagination.page >= movementPagination.totalPages"
+              >
+                Next
+              </button>
+              <input
+                type="number"
+                min="1"
+                [max]="movementPagination.totalPages"
+                [(ngModel)]="movementPageInput"
+                class="table-footer-input"
+              />
+              <button class="table-footer-btn primary" type="button" (click)="jumpMovementPage()">Go</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+
+      <div class="doctor-modal-backdrop" *ngIf="inventoryItemFormOpen">
+        <div class="doctor-modal">
+          <h3>{{ inventoryEditingItemId ? 'Edit item' : 'New item' }}</h3>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>Name</label>
+              <input type="text" [(ngModel)]="inventoryItemForm.name" placeholder="Item name" />
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select [(ngModel)]="inventoryItemForm.category">
+                <option [ngValue]="'consumable'">Consumable</option>
+                <option [ngValue]="'medicine'">Medicine</option>
+                <option [ngValue]="'equipment'">Equipment</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Unit</label>
+              <input type="text" [(ngModel)]="inventoryItemForm.unit" placeholder="pcs, box, bottle" />
+            </div>
+            <div class="form-group">
+              <label>Min stock (alert)</label>
+              <input type="number" min="0" [(ngModel)]="inventoryItemForm.minStock" />
+            </div>
+            <div class="form-group full-width">
+              <label>Description (optional)</label>
+              <textarea rows="2" [(ngModel)]="inventoryItemForm.description" placeholder="Notes"></textarea>
+            </div>
+          </div>
+          <div *ngIf="inventoryItemError" class="save-error">{{ inventoryItemError }}</div>
+          <div class="doctor-modal-actions">
+            <button class="btn-primary" type="button" [disabled]="inventoryItemSubmitting" (click)="saveInventoryItem()">
+              {{ inventoryItemSubmitting ? 'Saving…' : inventoryEditingItemId ? 'Update' : 'Create' }}
+            </button>
+            <button class="btn-icon ghost" type="button" (click)="closeInventoryItemForm()">Close</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="inventory-report-page" *ngIf="active === 'inventory-report'" @cardStagger>
+      <div class="inventory-page-head">
+        <div class="inventory-page-head-row">
+          <h2>Inventory — Report</h2>
+          <button
+            type="button"
+            class="inventory-help-btn"
+            (click)="openInventoryHelp()"
+            aria-label="How inventory works"
+            title="How inventory works"
+          >
+            <span class="inventory-help-ic" aria-hidden="true">?</span>
+          </button>
+        </div>
+        <p class="muted">Summary counts, low-stock alerts, and batches expiring within the next {{ inventoryReportData?.expiringWithinDays || 30 }} days.</p>
+      </div>
+      <div *ngIf="inventoryReportLoading" class="muted" style="padding: 12px">Loading…</div>
+
+      <div class="inventory-kpi-row" *ngIf="inventoryReportData && !inventoryReportLoading">
+        <article class="inventory-kpi glass-card">
+          <div class="inventory-kpi-label">Total items</div>
+          <div class="inventory-kpi-value">{{ inventoryReportTotalItems }}</div>
+          <div class="inventory-kpi-sub muted">Active items in catalog</div>
+        </article>
+        <article class="inventory-kpi glass-card alert-surface-low">
+          <div class="inventory-kpi-label">Low stock alerts</div>
+          <div class="inventory-kpi-value">{{ inventoryReportLowStockCount }}</div>
+          <div class="inventory-kpi-sub muted">Below minimum level</div>
+        </article>
+        <article class="inventory-kpi glass-card alert-surface-exp">
+          <div class="inventory-kpi-label">Expiring (30 days)</div>
+          <div class="inventory-kpi-value">{{ inventoryReportExpiringCount }}</div>
+          <div class="inventory-kpi-sub muted">Batches with expiry in window</div>
+        </article>
+      </div>
+
+      <div class="inventory-report-grid" *ngIf="inventoryReportData && !inventoryReportLoading">
+        <article class="glass-card inventory-section alert-surface-low">
+          <h3 class="inventory-section-title">Low stock</h3>
+          <p class="muted small" *ngIf="inventoryReportData.lowStockItems.length === 0">No low-stock items.</p>
+          <ul class="inventory-alert-list">
+            <li *ngFor="let it of inventoryReportData.lowStockItems" class="inventory-alert-item">
+              <strong>{{ it.name }}</strong>
+              <span class="muted"
+                >{{ it.totalQuantity }} {{ it.unit || 'units' }} (min {{ it.minStock }})</span
+              >
+            </li>
+          </ul>
+        </article>
+        <article class="glass-card inventory-section alert-surface-exp">
+          <h3 class="inventory-section-title">Expiring soon</h3>
+          <p class="muted small" *ngIf="inventoryReportData.expiringBatches.length === 0">No batches expiring in this window.</p>
+          <ul class="inventory-alert-list">
+            <li *ngFor="let ex of inventoryReportData.expiringBatches" class="inventory-alert-item">
+              <strong>{{ ex.itemName }}</strong>
+              <span *ngIf="ex.batchNumber" class="muted"> · {{ ex.batchNumber }}</span>
+              <span class="muted"> · qty {{ ex.quantity }} · expires {{ ex.expiryDate || '—' }}</span>
+            </li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <div
+      class="doctor-modal-backdrop inventory-help-backdrop"
+      *ngIf="inventoryHelpOpen"
+      (click)="closeInventoryHelp()"
+      role="presentation"
+    >
+      <div
+        class="doctor-modal inventory-help-modal"
+        (click)="$event.stopPropagation()"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="inventory-help-title"
+      >
+        <div class="inventory-help-modal-head">
+          <h3 id="inventory-help-title">How inventory works</h3>
+          <button type="button" class="inventory-help-close" (click)="closeInventoryHelp()" aria-label="Close">×</button>
+        </div>
+        <div class="inventory-help-body">
+          <p class="inventory-help-lead">
+            Inventory tracks what you stock, how much you have per batch, and every stock in or out. Use
+            <strong>Register</strong> for day-to-day actions and <strong>Report</strong> for alerts and overview.
+          </p>
+
+          <section class="inventory-help-block">
+            <h4>1. Items (catalog)</h4>
+            <p>
+              Each item has a name, category (consumable, medicine, equipment), unit (e.g. box, pcs), and
+              <strong>minimum stock</strong>. When total on hand falls below that level, it appears as a
+              <strong>low-stock</strong> alert on the Report page and is highlighted in Stock view.
+            </p>
+          </section>
+
+          <section class="inventory-help-block">
+            <h4>2. Add stock (purchase)</h4>
+            <p>
+              Receiving goods creates a <strong>batch</strong> line (quantity, optional batch number, purchase date,
+              supplier, price, expiry) and records an <strong>IN</strong> movement. Stock and history stay in sync.
+            </p>
+          </section>
+
+          <section class="inventory-help-block">
+            <h4>3. Use stock</h4>
+            <p>
+              When you use items (chairside, etc.), choose the item and quantity. The system issues stock using
+              <strong>FIFO</strong>: it consumes the <strong>oldest batches first</strong> (by purchase date, or receipt
+              date if purchase date is missing). One <strong>OUT</strong> movement is logged. If there isn’t enough total
+              quantity, the action is blocked and you’ll see how much is available.
+            </p>
+          </section>
+
+          <section class="inventory-help-block">
+            <h4>4. Stock view</h4>
+            <p>
+              Shows <strong>total quantity per item</strong>. Open <strong>Batches</strong> to see each line’s quantity,
+              expiry, and batch number—useful for expiry checks and audits.
+            </p>
+          </section>
+
+          <section class="inventory-help-block">
+            <h4>5. Movement history</h4>
+            <p>
+              Every <strong>IN</strong> and <strong>OUT</strong> appears here with item, type, quantity, date, and
+              reference (e.g. purchase, manual). Filter by item and date range to investigate usage.
+            </p>
+          </section>
+
+          <section class="inventory-help-block">
+            <h4>6. Report</h4>
+            <p>
+              See <strong>how many items</strong> you run, <strong>low-stock</strong> items, and
+              <strong>batches expiring in the next 30 days</strong> (only batches with an expiry date in that window).
+            </p>
+          </section>
+        </div>
+        <div class="doctor-modal-actions inventory-help-actions">
+          <button class="btn-primary" type="button" (click)="closeInventoryHelp()">Got it</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="transactions-page" *ngIf="active === 'transactions-dashboard'" @cardStagger>
+      <div class="inventory-page-head">
+        <div class="inventory-page-head-row">
+          <h2>Transactions — Dashboard</h2>
+          <button
+            type="button"
+            class="inventory-help-btn"
+            (click)="openTransactionsHelp('dashboard')"
+            aria-label="About this screen"
+            title="About this screen"
+          >
+            <span class="inventory-help-ic" aria-hidden="true">?</span>
+          </button>
+        </div>
+        <p class="muted">Income, expenses, balance, outstanding bills, and charts for the selected date range.</p>
+      </div>
+      <div class="fin-dash-filters glass-card">
+        <div class="fin-dash-filters-row">
+          <label class="fin-dash-label">
+            <span>Period</span>
+            <select [(ngModel)]="financialDashboardFilters.preset" (ngModelChange)="onFinancialPresetChange()">
+              <option value="6m">Last 6 months</option>
+              <option value="12m">Last 12 months</option>
+              <option value="ytd">Year to date</option>
+              <option value="custom">Custom range</option>
+            </select>
+          </label>
+          <label class="fin-dash-label">
+            <span>From</span>
+            <input
+              type="date"
+              [(ngModel)]="financialDashboardFilters.fromDate"
+              (ngModelChange)="onFinancialDateRangeEdited()"
+            />
+          </label>
+          <label class="fin-dash-label">
+            <span>To</span>
+            <input
+              type="date"
+              [(ngModel)]="financialDashboardFilters.toDate"
+              (ngModelChange)="onFinancialDateRangeEdited()"
+            />
+          </label>
+          <button
+            type="button"
+            class="btn-primary fin-dash-apply"
+            *ngIf="financialDashboardFilters.preset === 'custom'"
+            [disabled]="financialDashboardLoading"
+            (click)="applyFinancialDashboardFilters()"
+          >
+            Apply
+          </button>
+          <button type="button" class="btn-icon ghost fin-dash-reset" (click)="resetFinancialDashboardPeriod()" [disabled]="financialDashboardLoading">
+            Reset
+          </button>
+        </div>
+        <p class="muted small fin-dash-period-hint" *ngIf="financialDashboardPeriodLabel">
+          Active range: <strong>{{ financialDashboardPeriodLabel }}</strong>
+        </p>
+      </div>
+      <div *ngIf="financialDashboardLoading" class="muted" style="padding: 16px">Loading…</div>
+      <div class="financial-kpi-row" *ngIf="financialDashboard && !financialDashboardLoading">
+        <article class="glass-card financial-kpi">
+          <div class="financial-kpi-label">Total income</div>
+          <div class="financial-kpi-value pos">{{ formatMoney(financialDashboard.totalIncome) }}</div>
+          <div class="financial-kpi-sub muted" *ngIf="financialDashboardPeriodLabel">In selected period</div>
+        </article>
+        <article class="glass-card financial-kpi">
+          <div class="financial-kpi-label">Total expense</div>
+          <div class="financial-kpi-value neg">{{ formatMoney(financialDashboard.totalExpense) }}</div>
+          <div class="financial-kpi-sub muted" *ngIf="financialDashboardPeriodLabel">In selected period</div>
+        </article>
+        <article class="glass-card financial-kpi">
+          <div class="financial-kpi-label">Balance (P&amp;L)</div>
+          <div class="financial-kpi-value" [class.pos]="financialDashboard.balance >= 0" [class.neg]="financialDashboard.balance < 0">
+            {{ formatMoney(financialDashboard.balance) }}
+          </div>
+          <div class="financial-kpi-sub muted" *ngIf="financialDashboardPeriodLabel">In selected period</div>
+        </article>
+        <article class="glass-card financial-kpi alert-surface-low">
+          <div class="financial-kpi-label">Pending payments</div>
+          <div class="financial-kpi-value">{{ formatMoney(financialDashboard.pendingPayments) }}</div>
+          <div class="financial-kpi-sub muted">Unpaid balance on open bills (all time)</div>
+        </article>
+      </div>
+      <article class="glass-card inventory-section" *ngIf="financialDashboard?.chart?.length && !financialDashboardLoading">
+        <h3 class="inventory-section-title">Monthly income, expense &amp; net (P&amp;L)</h3>
+        <p class="muted small">Hover a month for details. Bars: income (green), expense (orange), net (blue, own scale).</p>
+        <div class="financial-chart financial-chart-triple">
+          <div
+            *ngFor="let row of financialChartRows"
+            class="financial-chart-col"
+            [class.financial-chart-col-active]="finDashActiveMonth === row.month"
+            (mouseenter)="showFinDashTooltip($event, row)"
+            (mousemove)="moveFinDashTooltip($event)"
+            (mouseleave)="hideFinDashTooltip()"
+          >
+            <div class="financial-chart-bars triple">
+              <div class="financial-bar income" [style.height.%]="chartBarPct(row.income)"></div>
+              <div class="financial-bar expense" [style.height.%]="chartBarPct(row.expense)"></div>
+              <div
+                class="financial-bar net"
+                [class.net-pos]="row.net >= 0"
+                [class.net-neg]="row.net < 0"
+                [style.height.%]="chartNetBarPct(row.net)"
+              ></div>
+            </div>
+            <span class="financial-chart-mo">{{ row.month }}</span>
+          </div>
+        </div>
+        <div class="financial-chart-title">Net profit / loss trend</div>
+        <svg viewBox="0 0 520 120" class="financial-line-svg financial-line-svg-interactive" *ngIf="financialChartRows.length" aria-label="Net trend">
+          <polyline class="grid" points="14,100 506,100"></polyline>
+          <polyline class="line net-line" [attr.points]="financialNetPolyline"></polyline>
+          <circle
+            *ngFor="let pt of financialNetPoints"
+            class="net-point"
+            [attr.cx]="pt.x"
+            [attr.cy]="pt.y"
+            r="5"
+            (mouseenter)="showNetPointTooltip($event, pt.month, pt.net)"
+            (mousemove)="moveFinDashTooltip($event)"
+            (mouseleave)="hideFinDashTooltip()"
+          />
+        </svg>
+      </article>
+      <div class="financial-dash-grid" *ngIf="financialDashboard && !financialDashboardLoading">
+        <article class="glass-card inventory-section">
+          <h3 class="inventory-section-title">Patient payments by method</h3>
+          <p class="muted small">Income in the ledger for the selected period.</p>
+          <div *ngIf="!financialDashboard.incomeByPaymentMethod.length" class="muted" style="padding: 12px">No payment data in this period.</div>
+          <div class="fin-hbar-list" *ngIf="financialDashboard.incomeByPaymentMethod.length">
+            <div
+              *ngFor="let m of financialDashboard.incomeByPaymentMethod"
+              class="fin-hbar-row"
+              (mouseenter)="showHbarTooltip($event, formatPaymentMethodLabel(m.method) + ': ' + formatMoney(m.amount))"
+              (mousemove)="moveHbarTooltip($event)"
+              (mouseleave)="hideHbarTooltip()"
+            >
+              <span class="fin-hbar-label">{{ formatPaymentMethodLabel(m.method) }}</span>
+              <div class="fin-hbar-track">
+                <span class="fin-hbar-fill income-fill" [style.width.%]="hBarPct(m.amount, financialPaymentMethodMax)"></span>
+              </div>
+              <span class="fin-hbar-val">{{ formatMoney(m.amount) }}</span>
+            </div>
+          </div>
+        </article>
+        <article class="glass-card inventory-section">
+          <h3 class="inventory-section-title">Expenses by category</h3>
+          <p class="muted small">Expense ledger for the selected period.</p>
+          <div *ngIf="!financialDashboard.expenseByCategory.length" class="muted" style="padding: 12px">No expenses in this period.</div>
+          <div class="fin-hbar-list" *ngIf="financialDashboard.expenseByCategory.length">
+            <div
+              *ngFor="let c of financialDashboard.expenseByCategory"
+              class="fin-hbar-row"
+              (mouseenter)="showHbarTooltip($event, c.category + ': ' + formatMoney(c.amount))"
+              (mousemove)="moveHbarTooltip($event)"
+              (mouseleave)="hideHbarTooltip()"
+            >
+              <span class="fin-hbar-label">{{ c.category }}</span>
+              <div class="fin-hbar-track">
+                <span class="fin-hbar-fill expense-fill" [style.width.%]="hBarPct(c.amount, financialCategoryMax)"></span>
+              </div>
+              <span class="fin-hbar-val">{{ formatMoney(c.amount) }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div
+        class="fin-floating-tooltip"
+        *ngIf="finDashTooltip.show"
+        [style.left.px]="finDashTooltip.x"
+        [style.top.px]="finDashTooltip.y"
+      >
+        {{ finDashTooltip.text }}
+      </div>
+      <div
+        class="fin-floating-tooltip"
+        *ngIf="hbarTooltip.show"
+        [style.left.px]="hbarTooltip.x"
+        [style.top.px]="hbarTooltip.y"
+      >
+        {{ hbarTooltip.text }}
+      </div>
+    </section>
+
+    <section class="transactions-page" *ngIf="active === 'transactions-billing'" @cardStagger>
+      <div class="inventory-page-head">
+        <div class="inventory-page-head-row">
+          <h2>Transactions — Billing</h2>
+          <button
+            type="button"
+            class="inventory-help-btn"
+            (click)="openTransactionsHelp('billing')"
+            aria-label="About billing"
+            title="About billing"
+          >
+            <span class="inventory-help-ic" aria-hidden="true">?</span>
+          </button>
+        </div>
+        <p class="muted">Create invoices with line items and discounts; track status until fully paid. Print any bill as PDF.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">New bill</h3>
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Patient</label>
+            <select [(ngModel)]="billForm.patientId">
+              <option [ngValue]="null">Select patient</option>
+              <option *ngFor="let p of financialPatients" [ngValue]="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Appointment (optional)</label>
+            <select [(ngModel)]="billForm.appointmentId">
+              <option [ngValue]="null">None</option>
+              <option *ngFor="let a of appointmentsForBillPatient" [ngValue]="a.id">
+                {{ a.appointmentDate }} {{ a.startTime }} — {{ a.title || 'Visit' }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Bill date</label>
+            <input type="date" [(ngModel)]="billForm.billDate" />
+          </div>
+          <div class="form-group">
+            <label>Discount</label>
+            <input type="number" min="0" step="0.01" [(ngModel)]="billForm.discount" />
+          </div>
+        </div>
+        <table class="register-table" style="margin-top: 12px">
+          <thead>
+            <tr>
+              <th>Service / item</th>
+              <th>Qty</th>
+              <th>Price</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let line of billForm.items; let i = index">
+              <td><input type="text" [(ngModel)]="line.itemName" placeholder="Description" /></td>
+              <td><input type="number" min="1" [(ngModel)]="line.quantity" /></td>
+              <td><input type="number" min="0" step="0.01" [(ngModel)]="line.price" /></td>
+              <td>
+                <button type="button" class="btn-icon ghost" (click)="removeBillLine(i)" [disabled]="billForm.items.length <= 1">✕</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <button type="button" class="btn-icon ghost" style="margin-top: 8px" (click)="addBillLine()">+ Add line</button>
+        <p class="muted small">
+          Subtotal: {{ formatMoney(billSubtotal) }} · Final after discount:
+          <strong>{{ formatMoney(billFinalComputed) }}</strong>
+        </p>
+        <div *ngIf="billError" class="save-error">{{ billError }}</div>
+        <button class="btn-primary" type="button" [disabled]="billSubmitting" (click)="submitBill()">
+          {{ billSubmitting ? 'Saving…' : 'Create bill' }}
+        </button>
+      </article>
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">All bills</h3>
+        <div class="table-wrap">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Patient</th>
+                <th>Date</th>
+                <th>Final</th>
+                <th>Paid</th>
+                <th>Status</th>
+                <th>Print</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let b of billingList">
+                <td>{{ b.id }}</td>
+                <td>{{ b.patientName }}</td>
+                <td>{{ b.billDate }}</td>
+                <td>{{ formatMoney(b.finalAmount) }}</td>
+                <td>{{ formatMoney(b.paidAmount) }}</td>
+                <td>
+                  <span class="inv-type-pill" [class.in]="b.status === 'paid'" [class.out]="b.status !== 'paid'">{{ b.status }}</span>
+                </td>
+                <td>
+                  <button type="button" class="btn-icon ghost" title="Download PDF" (click)="printBillPdf(b.id)">PDF</button>
+                </td>
+              </tr>
+              <tr *ngIf="billingList.length === 0">
+                <td colspan="7" class="muted" style="text-align: center; padding: 18px">No bills yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" *ngIf="billingPagination.totalPages > 0">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta">Page {{ billingPagination.page }} of {{ billingPagination.totalPages }}</span>
+            <div class="table-footer-controls">
+              <button class="table-footer-btn" type="button" (click)="changeBillingPage('prev')" [disabled]="billingPagination.page <= 1">Previous</button>
+              <button class="table-footer-btn" type="button" (click)="changeBillingPage('next')" [disabled]="billingPagination.page >= billingPagination.totalPages">Next</button>
+              <input type="number" class="table-footer-input" [(ngModel)]="billingPageInput" />
+              <button class="table-footer-btn primary" type="button" (click)="jumpBillingPage()">Go</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+    </section>
+
+    <section class="transactions-page" *ngIf="active === 'transactions-payments'" @cardStagger>
+      <div class="inventory-page-head">
+        <div class="inventory-page-head-row">
+          <h2>Transactions — Payments</h2>
+          <button
+            type="button"
+            class="inventory-help-btn"
+            (click)="openTransactionsHelp('payments')"
+            aria-label="About payments"
+            title="About payments"
+          >
+            <span class="inventory-help-ic" aria-hidden="true">?</span>
+          </button>
+        </div>
+        <p class="muted">Record payments against bills; income is logged and bill status updates automatically.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">Record payment</h3>
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Bill (with balance)</label>
+            <select [(ngModel)]="paymentForm.billingId" (ngModelChange)="onPaymentBillChange()">
+              <option [ngValue]="null">Select bill</option>
+              <option *ngFor="let b of billsWithBalance" [ngValue]="b.id">{{ b.label }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Amount</label>
+            <input type="number" min="0.01" step="0.01" [(ngModel)]="paymentForm.amount" />
+          </div>
+          <div class="form-group">
+            <label>Method</label>
+            <select [(ngModel)]="paymentForm.paymentMethod">
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="upi">UPI</option>
+              <option value="bank">Bank</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Payment date</label>
+            <input type="date" [(ngModel)]="paymentForm.paymentDate" />
+          </div>
+        </div>
+        <div *ngIf="paymentError" class="save-error">{{ paymentError }}</div>
+        <button class="btn-primary" type="button" [disabled]="paymentSubmitting" (click)="submitPayment()">
+          {{ paymentSubmitting ? 'Saving…' : 'Record payment' }}
+        </button>
+      </article>
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">Payment history</h3>
+        <div class="table-wrap">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Bill</th>
+                <th>Patient</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let p of paymentList">
+                <td>{{ p.id }}</td>
+                <td>#{{ p.billingId }}</td>
+                <td>{{ p.patientName }}</td>
+                <td>{{ formatMoney(p.amount) }}</td>
+                <td>{{ p.paymentMethod }}</td>
+                <td>{{ p.paymentDate }}</td>
+              </tr>
+              <tr *ngIf="paymentList.length === 0">
+                <td colspan="6" class="muted" style="text-align: center; padding: 18px">No payments yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" *ngIf="paymentPagination.totalPages > 0">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta">Page {{ paymentPagination.page }} of {{ paymentPagination.totalPages }}</span>
+            <div class="table-footer-controls">
+              <button class="table-footer-btn" type="button" (click)="changePaymentPage('prev')" [disabled]="paymentPagination.page <= 1">Previous</button>
+              <button class="table-footer-btn" type="button" (click)="changePaymentPage('next')" [disabled]="paymentPagination.page >= paymentPagination.totalPages">Next</button>
+              <input type="number" class="table-footer-input" [(ngModel)]="paymentPageInput" />
+              <button class="table-footer-btn primary" type="button" (click)="jumpPaymentPage()">Go</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+    </section>
+
+    <section class="transactions-page" *ngIf="active === 'transactions-expenses'" @cardStagger>
+      <div class="inventory-page-head">
+        <div class="inventory-page-head-row">
+          <h2>Transactions — Expenses</h2>
+          <button
+            type="button"
+            class="inventory-help-btn"
+            (click)="openTransactionsHelp('expenses')"
+            aria-label="About expenses"
+            title="About expenses"
+          >
+            <span class="inventory-help-ic" aria-hidden="true">?</span>
+          </button>
+        </div>
+        <p class="muted">Outgoing costs; optional link to an inventory purchase to add stock and keep books aligned.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">New expense</h3>
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Title</label>
+            <input type="text" [(ngModel)]="expenseForm.title" placeholder="e.g. Monthly rent" />
+          </div>
+          <div class="form-group">
+            <label>Amount</label>
+            <input type="number" min="0.01" step="0.01" [(ngModel)]="expenseForm.amount" />
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select [(ngModel)]="expenseForm.category" (change)="onExpenseInventoryToggle()">
+              <option value="general">General</option>
+              <option value="salary">Salary</option>
+              <option value="rent">Rent</option>
+              <option value="inventory_purchase">Inventory purchase</option>
+              <option value="equipment_purchase">Equipment purchase</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Payment method</label>
+            <select [(ngModel)]="expenseForm.paymentMethod">
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="upi">UPI</option>
+              <option value="bank">Bank</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Expense date</label>
+            <input type="date" [(ngModel)]="expenseForm.expenseDate" />
+          </div>
+          <div class="form-group full-width">
+            <label>Description</label>
+            <textarea rows="2" [(ngModel)]="expenseForm.description" placeholder="Optional notes"></textarea>
+          </div>
+          <div class="form-group full-width inline-boolean">
+            <label class="inline-switch">
+              <input type="checkbox" [(ngModel)]="expenseForm.linkInventory" (change)="onExpenseInventoryToggle()" />
+              <span class="switch-slider"></span>
+              Link inventory purchase (adds stock + expense + ledger)
+            </label>
+          </div>
+        </div>
+        <div *ngIf="expenseForm.linkInventory" class="settings-grid" style="margin-top: 12px">
+          <div class="form-group">
+            <label>Inventory item</label>
+            <select [(ngModel)]="expenseForm.inventoryItemId" (ngModelChange)="onExpenseInventoryItemChange()">
+              <option [ngValue]="null">Select item</option>
+              <option *ngFor="let it of inventoryItemsForExpense" [ngValue]="it.id">{{ it.name }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" min="1" [(ngModel)]="expenseForm.invQty" />
+          </div>
+          <div class="form-group">
+            <label>Purchase total (must match amount)</label>
+            <input type="number" min="0.01" step="0.01" [(ngModel)]="expenseForm.invPurchasePrice" />
+          </div>
+          <div class="form-group">
+            <label>Purchase date</label>
+            <input type="date" [(ngModel)]="expenseForm.invPurchaseDate" />
+          </div>
+          <div class="form-group">
+            <label>Supplier</label>
+            <input type="text" [(ngModel)]="expenseForm.invSupplier" />
+          </div>
+          <div class="form-group">
+            <label>Expiry</label>
+            <input type="date" [(ngModel)]="expenseForm.invExpiry" />
+          </div>
+          <div class="form-group full-width">
+            <label>Batch #</label>
+            <input type="text" [(ngModel)]="expenseForm.invBatch" />
+          </div>
+        </div>
+        <div *ngIf="expenseError" class="save-error">{{ expenseError }}</div>
+        <button class="btn-primary" type="button" [disabled]="expenseSubmitting" (click)="submitExpense()">
+          {{ expenseSubmitting ? 'Saving…' : 'Save expense' }}
+        </button>
+      </article>
+      <article class="glass-card inventory-section">
+        <h3 class="inventory-section-title">Expense list</h3>
+        <div class="table-wrap">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>Method</th>
+                <th>Date</th>
+                <th>Linked</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let e of expenseList">
+                <td>{{ e.title }}</td>
+                <td>{{ formatMoney(e.amount) }}</td>
+                <td>{{ e.category }}</td>
+                <td>{{ e.paymentMethod }}</td>
+                <td>{{ e.expenseDate }}</td>
+                <td>{{ e.referenceType || '—' }} {{ e.referenceId || '' }}</td>
+              </tr>
+              <tr *ngIf="expenseList.length === 0">
+                <td colspan="6" class="muted" style="text-align: center; padding: 18px">No expenses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" *ngIf="expensePagination.totalPages > 0">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta">Page {{ expensePagination.page }} of {{ expensePagination.totalPages }}</span>
+            <div class="table-footer-controls">
+              <button class="table-footer-btn" type="button" (click)="changeExpensePage('prev')" [disabled]="expensePagination.page <= 1">Previous</button>
+              <button class="table-footer-btn" type="button" (click)="changeExpensePage('next')" [disabled]="expensePagination.page >= expensePagination.totalPages">Next</button>
+              <input type="number" class="table-footer-input" [(ngModel)]="expensePageInput" />
+              <button class="table-footer-btn primary" type="button" (click)="jumpExpensePage()">Go</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+    </section>
+
+    <section class="transactions-page" *ngIf="active === 'transactions-ledger'" @cardStagger>
+      <div class="inventory-page-head">
+        <div class="inventory-page-head-row">
+          <h2>Transactions — Log</h2>
+          <button
+            type="button"
+            class="inventory-help-btn"
+            (click)="openTransactionsHelp('ledger')"
+            aria-label="About transactions log"
+            title="About transactions log"
+          >
+            <span class="inventory-help-ic" aria-hidden="true">?</span>
+          </button>
+        </div>
+        <p class="muted">Unified ledger: every income and expense recorded in the system.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <div class="inventory-toolbar">
+          <select class="inventory-select" [(ngModel)]="ledgerFilters.type">
+            <option value="">All types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+          <input type="text" class="inventory-search" [(ngModel)]="ledgerFilters.category" placeholder="Category contains…" />
+          <input type="date" [(ngModel)]="ledgerFilters.fromDate" />
+          <input type="date" [(ngModel)]="ledgerFilters.toDate" />
+          <button class="btn-primary" type="button" (click)="applyLedgerFilters()">Apply</button>
+        </div>
+        <div class="table-wrap">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>Method</th>
+                <th>Date</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let e of ledgerEntries" [class.ledger-income]="e.type === 'income'" [class.ledger-expense]="e.type === 'expense'">
+                <td>
+                  <span class="inv-type-pill" [class.in]="e.type === 'income'" [class.out]="e.type === 'expense'">{{ e.type }}</span>
+                </td>
+                <td>{{ formatMoney(e.amount) }}</td>
+                <td>{{ e.category || '—' }}</td>
+                <td>{{ e.paymentMethod || '—' }}</td>
+                <td>{{ e.transactionDate }}</td>
+                <td>{{ e.referenceType || '—' }} #{{ e.referenceId ?? '—' }}</td>
+              </tr>
+              <tr *ngIf="ledgerEntries.length === 0">
+                <td colspan="6" class="muted" style="text-align: center; padding: 18px">No entries.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" *ngIf="ledgerPagination.totalPages > 0">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta">Page {{ ledgerPagination.page }} of {{ ledgerPagination.totalPages }}</span>
+            <div class="table-footer-controls">
+              <button class="table-footer-btn" type="button" (click)="changeLedgerPage('prev')" [disabled]="ledgerPagination.page <= 1">Previous</button>
+              <button class="table-footer-btn" type="button" (click)="changeLedgerPage('next')" [disabled]="ledgerPagination.page >= ledgerPagination.totalPages">Next</button>
+              <input type="number" class="table-footer-input" [(ngModel)]="ledgerPageInput" />
+              <button class="table-footer-btn primary" type="button" (click)="jumpLedgerPage()">Go</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+    </section>
+
+    <!-- Document Management -->
+    <section class="transactions-page documents-page" *ngIf="active === 'documents-patient'" @cardStagger>
+      <div class="inventory-page-head">
+        <h2>Document Management — Patient Documents</h2>
+        <p class="muted">Select a patient, upload files (X-rays, reports), then view, download, edit metadata, or delete.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <div class="inventory-toolbar doc-toolbar">
+          <input type="search" class="inventory-search" [(ngModel)]="docPatientSearch" placeholder="Filter patient list…" />
+          <select [(ngModel)]="docPatientId" (ngModelChange)="onDocPatientSelected()">
+            <option [ngValue]="null">Select patient</option>
+            <option *ngFor="let p of docPatientsFiltered" [ngValue]="p.id">{{ p.name }}</option>
+          </select>
+        </div>
+        <h3 class="inventory-section-title">Create — upload</h3>
+        <div class="settings-grid doc-upload-grid" *ngIf="docPatientId">
+          <div class="form-group"><label>Document type</label><input type="text" [(ngModel)]="docPatientUpload.documentType" placeholder="e.g. xray, report" /></div>
+          <div class="form-group"><label>Title</label><input type="text" [(ngModel)]="docPatientUpload.title" placeholder="Optional title" /></div>
+          <div class="form-group full-width"><label>Description</label><input type="text" [(ngModel)]="docPatientUpload.description" placeholder="Optional" /></div>
+          <div class="form-group full-width"><label>File</label><input type="file" (change)="onDocPatientFileSelected($event)" /></div>
+          <div class="form-group"><button type="button" class="btn-primary" [disabled]="docPatientLoading || !docPatientUpload.file" (click)="submitDocumentsPatientUpload()">Create / Upload</button></div>
+        </div>
+        <p class="muted" *ngIf="!docPatientId">Choose a patient to upload or list documents.</p>
+        <h3 class="inventory-section-title">Documents</h3>
+        <div *ngIf="docPatientLoading" class="muted">Loading…</div>
+        <div class="table-wrap" *ngIf="docPatientId && !docPatientLoading">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>File</th>
+                <th>Uploaded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of docPatientAttachments">
+                <td>{{ row.title || '—' }}</td>
+                <td>{{ row.documentType || '—' }}</td>
+                <td>{{ row.fileName }}</td>
+                <td>{{ formatDocDate(row.createdDate) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtPreview(row)">View</button>
+                    <button type="button" class="btn-icon ghost" (click)="downloadDocMgmtAttachment(row)">Download</button>
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtEdit(row)">Edit</button>
+                    <button type="button" class="btn-icon ghost" (click)="deleteDocMgmtAttachment(row)">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="!docPatientAttachments.length">
+                <td colspan="5" class="muted" style="text-align: center; padding: 18px">No documents for this patient.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="transactions-page documents-page" *ngIf="active === 'documents-medical'" @cardStagger>
+      <div class="inventory-page-head">
+        <h2>Document Management — Medical Records</h2>
+        <p class="muted">Clinical documents per patient; optional appointment filter and link on upload.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <div class="inventory-toolbar doc-toolbar">
+          <select [(ngModel)]="docMedPatientId" (ngModelChange)="onDocMedPatientChange()">
+            <option [ngValue]="null">Select patient</option>
+            <option *ngFor="let p of docPatients" [ngValue]="p.id">{{ p.name }}</option>
+          </select>
+          <select [(ngModel)]="docMedAppointmentId" [disabled]="!docMedPatientId">
+            <option [ngValue]="null">All appointments</option>
+            <option *ngFor="let a of docAppointmentsForMedPatient" [ngValue]="a.id">
+              {{ a.appointmentDate }} {{ a.startTime }} — {{ a.title || 'Visit' }}
+            </option>
+          </select>
+        </div>
+        <h3 class="inventory-section-title">Create — upload</h3>
+        <div class="settings-grid doc-upload-grid" *ngIf="docMedPatientId">
+          <div class="form-group"><label>Document type</label><input type="text" [(ngModel)]="docMedUpload.documentType" placeholder="e.g. clinical, lab" /></div>
+          <div class="form-group"><label>Title</label><input type="text" [(ngModel)]="docMedUpload.title" /></div>
+          <div class="form-group"><label>Link to appointment (optional)</label>
+            <select [(ngModel)]="docMedUpload.appointmentId">
+              <option [ngValue]="null">None</option>
+              <option *ngFor="let a of docAppointmentsForMedPatient" [ngValue]="a.id">{{ a.appointmentDate }} {{ a.startTime }}</option>
+            </select>
+          </div>
+          <div class="form-group full-width"><label>Description</label><input type="text" [(ngModel)]="docMedUpload.description" /></div>
+          <div class="form-group full-width"><label>File</label><input type="file" (change)="onDocMedFileSelected($event)" /></div>
+          <div class="form-group"><button type="button" class="btn-primary" [disabled]="docMedLoading || !docMedUpload.file" (click)="submitDocumentsMedicalUpload()">Create / Upload</button></div>
+        </div>
+        <h3 class="inventory-section-title">Documents</h3>
+        <div *ngIf="docMedLoading" class="muted">Loading…</div>
+        <div class="table-wrap" *ngIf="docMedPatientId && !docMedLoading">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Appt #</th>
+                <th>File</th>
+                <th>Uploaded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of docMedAttachmentsFiltered">
+                <td>{{ row.title || '—' }}</td>
+                <td>{{ row.documentType || '—' }}</td>
+                <td>{{ row.appointmentId ?? '—' }}</td>
+                <td>{{ row.fileName }}</td>
+                <td>{{ formatDocDate(row.createdDate) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtPreview(row)">View</button>
+                    <button type="button" class="btn-icon ghost" (click)="downloadDocMgmtAttachment(row)">Download</button>
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtEdit(row)">Edit</button>
+                    <button type="button" class="btn-icon ghost" (click)="deleteDocMgmtAttachment(row)">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="!docMedAttachmentsFiltered.length">
+                <td colspan="6" class="muted" style="text-align: center; padding: 18px">No records.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="transactions-page documents-page" *ngIf="active === 'documents-billing'" @cardStagger>
+      <div class="inventory-page-head">
+        <h2>Document Management — Billing Documents</h2>
+        <p class="muted">Receipts and invoices linked to a bill.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <div class="inventory-toolbar doc-toolbar">
+          <select [(ngModel)]="docBillId" (ngModelChange)="onDocBillSelected()">
+            <option [ngValue]="null">Select bill</option>
+            <option *ngFor="let b of docBillsSelect" [ngValue]="b.id">{{ b.label }}</option>
+          </select>
+        </div>
+        <h3 class="inventory-section-title">Create — upload</h3>
+        <div class="settings-grid doc-upload-grid" *ngIf="docBillId">
+          <div class="form-group"><label>Document type</label><input type="text" [(ngModel)]="docBillingUpload.documentType" placeholder="receipt, invoice" /></div>
+          <div class="form-group"><label>Title</label><input type="text" [(ngModel)]="docBillingUpload.title" /></div>
+          <div class="form-group full-width"><label>Description</label><input type="text" [(ngModel)]="docBillingUpload.description" /></div>
+          <div class="form-group full-width"><label>File</label><input type="file" (change)="onDocBillingFileSelected($event)" /></div>
+          <div class="form-group"><button type="button" class="btn-primary" [disabled]="docBillingLoading || !docBillingUpload.file" (click)="submitDocumentsBillingUpload()">Create / Upload</button></div>
+        </div>
+        <h3 class="inventory-section-title">Documents</h3>
+        <div *ngIf="docBillingLoading" class="muted">Loading…</div>
+        <div class="table-wrap" *ngIf="docBillId && !docBillingLoading">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>File</th>
+                <th>Uploaded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of docBillingAttachments">
+                <td>{{ row.title || '—' }}</td>
+                <td>{{ row.documentType || '—' }}</td>
+                <td>{{ row.fileName }}</td>
+                <td>{{ formatDocDate(row.createdDate) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtPreview(row)">View</button>
+                    <button type="button" class="btn-icon ghost" (click)="downloadDocMgmtAttachment(row)">Download</button>
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtEdit(row)">Edit</button>
+                    <button type="button" class="btn-icon ghost" (click)="deleteDocMgmtAttachment(row)">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="!docBillingAttachments.length">
+                <td colspan="5" class="muted" style="text-align: center; padding: 18px">No billing documents.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="transactions-page documents-page" *ngIf="active === 'documents-doctor'" @cardStagger>
+      <div class="inventory-page-head">
+        <h2>Document Management — Doctor Documents</h2>
+        <p class="muted">Certificates, licenses, and credentials per doctor.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <div class="inventory-toolbar doc-toolbar">
+          <select [(ngModel)]="docDoctorId" (ngModelChange)="onDocDoctorSelected()">
+            <option [ngValue]="null">Select doctor</option>
+            <option *ngFor="let d of docDoctors" [ngValue]="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+        <h3 class="inventory-section-title">Create — upload</h3>
+        <div class="settings-grid doc-upload-grid" *ngIf="docDoctorId">
+          <div class="form-group"><label>Document type</label><input type="text" [(ngModel)]="docDoctorUpload.documentType" placeholder="certificate, license" /></div>
+          <div class="form-group"><label>Title</label><input type="text" [(ngModel)]="docDoctorUpload.title" /></div>
+          <div class="form-group full-width"><label>Description</label><input type="text" [(ngModel)]="docDoctorUpload.description" /></div>
+          <div class="form-group full-width"><label>File</label><input type="file" (change)="onDocDoctorFileSelected($event)" /></div>
+          <div class="form-group"><button type="button" class="btn-primary" [disabled]="docDoctorLoading || !docDoctorUpload.file" (click)="submitDocumentsDoctorUpload()">Create / Upload</button></div>
+        </div>
+        <h3 class="inventory-section-title">Documents</h3>
+        <div *ngIf="docDoctorLoading" class="muted">Loading…</div>
+        <div class="table-wrap" *ngIf="docDoctorId && !docDoctorLoading">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>File</th>
+                <th>Uploaded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of docDoctorAttachments">
+                <td>{{ row.title || '—' }}</td>
+                <td>{{ row.documentType || '—' }}</td>
+                <td>{{ row.fileName }}</td>
+                <td>{{ formatDocDate(row.createdDate) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtPreview(row)">View</button>
+                    <button type="button" class="btn-icon ghost" (click)="downloadDocMgmtAttachment(row)">Download</button>
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtEdit(row)">Edit</button>
+                    <button type="button" class="btn-icon ghost" (click)="deleteDocMgmtAttachment(row)">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="!docDoctorAttachments.length">
+                <td colspan="5" class="muted" style="text-align: center; padding: 18px">No doctor documents.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="transactions-page documents-page" *ngIf="active === 'documents-all'" @cardStagger>
+      <div class="inventory-page-head">
+        <h2>Document Management — All Documents</h2>
+        <p class="muted">Master list with filters. Use View / Download / Edit / Delete on each row.</p>
+      </div>
+      <article class="glass-card inventory-section">
+        <div class="inventory-toolbar doc-toolbar doc-browse-toolbar">
+          <select [(ngModel)]="docBrowseFilters.entityType">
+            <option *ngFor="let o of docEntityTypeOptions" [ngValue]="o.value">{{ o.label }}</option>
+          </select>
+          <input type="text" [(ngModel)]="docBrowseFilters.entityId" placeholder="Entity ID" class="inventory-search" style="max-width: 120px" />
+          <input type="text" [(ngModel)]="docBrowseFilters.documentType" placeholder="Document type" class="inventory-search" />
+          <input type="date" [(ngModel)]="docBrowseFilters.fromDate" />
+          <input type="date" [(ngModel)]="docBrowseFilters.toDate" />
+          <input type="text" [(ngModel)]="docBrowseFilters.appointmentId" placeholder="Appt ID" class="inventory-search" style="max-width: 100px" />
+          <button type="button" class="btn-primary" (click)="applyDocumentsBrowseFilters()">Apply</button>
+        </div>
+        <div *ngIf="docBrowseLoading" class="muted">Loading…</div>
+        <div class="table-wrap" *ngIf="!docBrowseLoading">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Entity</th>
+                <th>Title</th>
+                <th>Doc type</th>
+                <th>File</th>
+                <th>Uploaded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of docBrowseAttachments">
+                <td>{{ row.id }}</td>
+                <td>{{ row.entityType }} #{{ row.entityId }}</td>
+                <td>{{ row.title || '—' }}</td>
+                <td>{{ row.documentType || '—' }}</td>
+                <td>{{ row.fileName }}</td>
+                <td>{{ formatDocDate(row.createdDate) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtPreview(row)">View</button>
+                    <button type="button" class="btn-icon ghost" (click)="downloadDocMgmtAttachment(row)">Download</button>
+                    <button type="button" class="btn-icon ghost" (click)="openDocMgmtEdit(row)">Edit</button>
+                    <button type="button" class="btn-icon ghost" (click)="deleteDocMgmtAttachment(row)">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="!docBrowseAttachments.length">
+                <td colspan="7" class="muted" style="text-align: center; padding: 18px">No documents match filters.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-footer" *ngIf="docBrowsePagination.totalPages > 0">
+          <div class="table-footer-inner">
+            <span class="table-footer-meta">Page {{ docBrowsePagination.page }} of {{ docBrowsePagination.totalPages }} ({{ docBrowsePagination.total }} total)</span>
+            <div class="table-footer-controls">
+              <button type="button" class="table-footer-btn" (click)="changeDocumentsBrowsePage('prev')" [disabled]="docBrowsePagination.page <= 1">Previous</button>
+              <button type="button" class="table-footer-btn" (click)="changeDocumentsBrowsePage('next')" [disabled]="docBrowsePagination.page >= docBrowsePagination.totalPages">Next</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+    </section>
+
+    <div class="doctor-modal-backdrop" *ngIf="docMgmtPreview" (click)="closeDocMgmtPreview()" role="presentation">
+      <div class="doctor-modal doc-preview-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+        <div class="settings-card-head">
+          <h3 style="margin: 0">View document</h3>
+          <button type="button" class="btn-icon ghost" (click)="closeDocMgmtPreview()">Close</button>
+        </div>
+        <p class="muted" *ngIf="docMgmtPreview">{{ docMgmtPreview.title || docMgmtPreview.fileName }}</p>
+        <div class="doc-preview-body" *ngIf="docMgmtPreviewData">
+          <img
+            *ngIf="isDocMgmtPreviewImage(docMgmtPreviewData.fileType)"
+            [src]="docMgmtPreviewData.data"
+            [alt]="docMgmtPreviewData.fileName"
+            style="max-width: 100%; max-height: 480px; object-fit: contain"
+          />
+          <iframe
+            *ngIf="isDocMgmtPreviewPdf(docMgmtPreviewData.fileType) && docMgmtPreviewUrl"
+            [src]="docMgmtPreviewUrl"
+            title="Document preview"
+            style="width: 100%; height: 480px; border: 0"
+          ></iframe>
+          <div *ngIf="!isDocMgmtPreviewImage(docMgmtPreviewData.fileType) && !isDocMgmtPreviewPdf(docMgmtPreviewData.fileType)">
+            <p class="muted">Preview not available for this type.</p>
+            <button type="button" class="btn-primary" (click)="docMgmtPreview && downloadDocMgmtAttachment(docMgmtPreview)">Download</button>
+          </div>
+        </div>
+        <div *ngIf="docMgmtPreview && !docMgmtPreviewData" class="muted">Loading…</div>
+      </div>
+    </div>
+
+    <div class="doctor-modal-backdrop" *ngIf="docMgmtEditOpen" (click)="closeDocMgmtEdit()" role="presentation">
+      <div class="doctor-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+        <div class="settings-card-head">
+          <h3 style="margin: 0">Edit document</h3>
+          <button type="button" class="btn-icon ghost" (click)="closeDocMgmtEdit()">Close</button>
+        </div>
+        <div class="settings-grid">
+          <div class="form-group"><label>Document type</label><input type="text" [(ngModel)]="docMgmtEditForm.documentType" /></div>
+          <div class="form-group"><label>Title</label><input type="text" [(ngModel)]="docMgmtEditForm.title" /></div>
+          <div class="form-group full-width"><label>Description</label><input type="text" [(ngModel)]="docMgmtEditForm.description" /></div>
+          <div class="form-group">
+            <label>Entity type</label>
+            <select [(ngModel)]="docMgmtEditForm.entityType">
+              <option value="patient">patient</option>
+              <option value="medical_record">medical_record</option>
+              <option value="doctor">doctor</option>
+              <option value="appointment">appointment</option>
+              <option value="billing">billing</option>
+              <option value="inventory">inventory</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Entity ID</label><input type="text" inputmode="numeric" [(ngModel)]="docMgmtEditForm.entityId" /></div>
+          <div class="form-group"><label>Appointment ID (optional)</label><input type="text" [(ngModel)]="docMgmtEditForm.appointmentId" placeholder="Clear to remove" /></div>
+          <div class="form-group full-width"><label>Replace file (optional)</label><input type="file" (change)="onDocMgmtEditFileSelected($event)" /></div>
+        </div>
+        <div class="doctor-modal-actions">
+          <button type="button" class="btn-primary" [disabled]="docMgmtEditSaving" (click)="submitDocMgmtEdit()">{{ docMgmtEditSaving ? 'Saving…' : 'Save' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="doctor-modal-backdrop inventory-help-backdrop"
+      *ngIf="transactionsHelpOpen"
+      (click)="closeTransactionsHelp()"
+      role="presentation"
+    >
+      <div
+        class="doctor-modal inventory-help-modal"
+        (click)="$event.stopPropagation()"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transactions-help-title"
+      >
+        <div class="inventory-help-modal-head">
+          <h3 id="transactions-help-title">
+            <ng-container [ngSwitch]="transactionsHelpSection">
+              <span *ngSwitchCase="'dashboard'">Transactions — Dashboard</span>
+              <span *ngSwitchCase="'billing'">Transactions — Billing</span>
+              <span *ngSwitchCase="'payments'">Transactions — Payments</span>
+              <span *ngSwitchCase="'expenses'">Transactions — Expenses</span>
+              <span *ngSwitchCase="'ledger'">Transactions — Log</span>
+            </ng-container>
+          </h3>
+          <button type="button" class="inventory-help-close" (click)="closeTransactionsHelp()" aria-label="Close">×</button>
+        </div>
+        <div class="inventory-help-body">
+          <ng-container [ngSwitch]="transactionsHelpSection">
+            <div *ngSwitchCase="'dashboard'">
+              <p class="inventory-help-lead">
+                This screen summarizes your financial position from the <strong>unified transactions</strong> table: total money in,
+                total out, net balance (profit &amp; loss), and how much is still owed on open bills.
+              </p>
+              <p>
+                Use <strong>Period</strong> and <strong>From / To</strong> to choose a date range (presets or custom). KPI totals, the monthly chart,
+                payment-method breakdown, and expense-by-category chart all use that same range. <strong>Pending payments</strong> is always the current
+                unpaid total on open bills. Hover charts for values.
+              </p>
+            </div>
+            <div *ngSwitchCase="'billing'">
+              <p class="inventory-help-lead">
+                Create an <strong>invoice</strong> for a patient (and optional appointment), add line items, apply a discount, and save.
+                The bill starts as <strong>pending</strong> until payments cover the final amount.
+              </p>
+              <p>
+                Use <strong>PDF</strong> on any row to download a printable invoice with your organisation branding (header/footer/seal
+                when configured), line items, totals, and amount paid so far.
+              </p>
+            </div>
+            <div *ngSwitchCase="'payments'">
+              <p class="inventory-help-lead">
+                Record money received against a bill. Each payment creates an <strong>income</strong> entry in the ledger and
+                updates the bill to <strong>partial</strong> or <strong>paid</strong> when the total is reached.
+              </p>
+              <p>You cannot pay more than the remaining balance on a bill.</p>
+            </div>
+            <div *ngSwitchCase="'expenses'">
+              <p class="inventory-help-lead">
+                Log any outgoing cost (salary, rent, supplies, etc.). Each expense is recorded in the <strong>ledger</strong> as an
+                expense line.
+              </p>
+              <p>
+                Optionally <strong>link an inventory purchase</strong>: the same amount creates stock (IN movement), ties the expense
+                to that stock row, and keeps inventory and accounting in sync.
+              </p>
+            </div>
+            <div *ngSwitchCase="'ledger'">
+              <p class="inventory-help-lead">
+                The <strong>transactions log</strong> is the single audit trail: every income (e.g. patient payments) and every
+                expense, with category, method, date, and reference to the source record.
+              </p>
+              <p>Use filters to review activity by type, category text, or date range.</p>
+            </div>
+          </ng-container>
+        </div>
+        <div class="doctor-modal-actions inventory-help-actions">
+          <button class="btn-primary" type="button" (click)="closeTransactionsHelp()">Got it</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="register-page" *ngIf="isRegisterPage && active !== 'appointment-register' && active !== 'inventory-register'" @cardStagger>
+      <div class="register-header">
+        <div>
+          <h2>{{ activeRegisterKey | titlecase }} Register</h2>
+          <p>Temporary table data. Download full table or per row in CSV, Excel, or PDF.</p>
+        </div>
+        <div class="form-group" *ngIf="activeRegisterKey === 'doctor' || activeRegisterKey === 'patients' || activeRegisterKey === 'staff'">
+          <input type="text" [(ngModel)]="registerSearch" (input)="onRegisterSearchInput()" placeholder="Search records..." />
+        </div>
+        <div class="register-actions">
+          <button *ngIf="activeRegisterKey === 'doctor'" class="btn-primary" type="button" (click)="openCreateDoctor()">
+            Add Doctor
+          </button>
+          <button *ngIf="activeRegisterKey === 'patients'" class="btn-primary" type="button" (click)="openCreatePatient()">
+            Add Patient
+          </button>
+          <button *ngIf="activeRegisterKey === 'staff'" class="btn-primary" type="button" (click)="openCreateStaff()">
+            Add Staff
+          </button>
+          <div class="download-container">
+            <button class="btn-icon" (click)="toggleDownloadDropdown('table', undefined, $event)" title="Download Table">
+              ↓
+            </button>
+            <div class="dropdown-menu" *ngIf="showDownloadDropdown === 'table'" (click)="$event.stopPropagation()">
+              <button (click)="download('csv', 'table')">CSV</button>
+              <button (click)="download('excel', 'table')">Excel</button>
+              <button (click)="download('pdf', 'table')">PDF</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="register-table" *ngIf="activeRegisterKey === 'doctor'">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Profile</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Specialization</th>
+              <th>Experience</th>
+              <th>Qualification</th>
+              <th>Consultation Fee</th>
+              <th>Available Time</th>
+              <th *ngIf="canManageUserAccounts">Active</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of paginatedRegisterRows; let i = index" [class.row-dropdown-open]="showDownloadDropdown === 'row' && activeRowForDownload === row">
+              <td>{{ ((registerPage - 1) * registerPageSize) + i + 1 }}</td>
+              <td>
+                <img
+                  *ngIf="row['profileImage']"
+                  [src]="row['profileImage']"
+                  alt="Doctor profile"
+                  style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid rgba(148,163,184,.35);"
+                />
+                <span
+                  *ngIf="!row['profileImage']"
+                  style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(79,70,229,.12);font-weight:700;"
+                >
+                  {{ (row['username'] || 'D').charAt(0) | uppercase }}
+                </span>
+              </td>
+              <td>{{ row['username'] }}</td>
+              <td>{{ row['email'] }}</td>
+              <td>{{ row['specialization'] }}</td>
+              <td>{{ row['experience'] }}</td>
+              <td>{{ row['qualification'] }}</td>
+              <td>{{ row['consultationFee'] }}</td>
+              <td>{{ row['availableTime'] }}</td>
+              <td *ngIf="canManageUserAccounts" class="toggle-cell">
+                <label class="register-account-switch">
+                  <input
+                    type="checkbox"
+                    [checked]="!!row['userAccountActive']"
+                    (change)="onUserAccountActiveChange(row, $any($event.target).checked)"
+                    [disabled]="userAccountToggleUserId === row['userId']"
+                  />
+                  <span class="register-account-switch-ui" aria-hidden="true"></span>
+                </label>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn-icon ghost" type="button" title="Edit Doctor" (click)="openEditDoctor(row)">✎</button>
+                  <button class="btn-icon ghost" type="button" title="Delete Doctor" (click)="deleteDoctor(row)">🗑</button>
+                  <div class="download-container">
+                    <button class="btn-icon ghost" (click)="toggleDownloadDropdown('row', row, $event)" title="Download Row">↓</button>
+                    <div class="dropdown-menu" *ngIf="showDownloadDropdown === 'row' && activeRowForDownload === row" (click)="$event.stopPropagation()">
+                      <button (click)="download('csv', 'row')">CSV</button>
+                      <button (click)="download('excel', 'row')">Excel</button>
+                      <button (click)="download('pdf', 'row')">PDF</button>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr *ngIf="paginatedRegisterRows.length === 0">
+              <td [attr.colspan]="canManageUserAccounts ? 11 : 10" class="muted" style="text-align:center; padding:18px;">No data is present.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table class="register-table" *ngIf="activeRegisterKey === 'patients'">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Profile</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Mobile</th>
+              <th>Gender</th>
+              <th>Blood Group</th>
+              <th>City</th>
+              <th *ngIf="canManageUserAccounts">Active</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              *ngFor="let row of paginatedRegisterRows; let i = index"
+              [class.row-dropdown-open]="showDownloadDropdown === 'row' && activeRowForDownload === row"
+            >
+              <td>{{ ((registerPage - 1) * registerPageSize) + i + 1 }}</td>
+              <td>
+                <img
+                  *ngIf="row['profileImage']"
+                  [src]="row['profileImage']"
+                  alt="Patient profile"
+                  style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid rgba(148,163,184,.35);"
+                />
+                <span
+                  *ngIf="!row['profileImage']"
+                  style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(14,165,233,.12);font-weight:700;"
+                >
+                  {{ (row['username'] || 'P').charAt(0) | uppercase }}
+                </span>
+              </td>
+              <td>{{ row['username'] }}</td>
+              <td>{{ row['email'] }}</td>
+              <td>{{ row['mobile'] }}</td>
+              <td>{{ row['gender'] }}</td>
+              <td>{{ row['bloodGroup'] }}</td>
+              <td>{{ row['city'] }}</td>
+              <td *ngIf="canManageUserAccounts" class="toggle-cell">
+                <label class="register-account-switch">
+                  <input
+                    type="checkbox"
+                    [checked]="!!row['userAccountActive']"
+                    (change)="onUserAccountActiveChange(row, $any($event.target).checked)"
+                    [disabled]="userAccountToggleUserId === row['userId']"
+                  />
+                  <span class="register-account-switch-ui" aria-hidden="true"></span>
+                </label>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn-icon ghost" type="button" title="Edit Patient" (click)="openEditPatient(row)">✎</button>
+                  <button class="btn-icon ghost" type="button" title="Delete Patient" (click)="deletePatient(row)">🗑</button>
+                  <div class="download-container">
+                    <button class="btn-icon ghost" (click)="toggleDownloadDropdown('row', row, $event)" title="Download Row">↓</button>
+                    <div class="dropdown-menu" *ngIf="showDownloadDropdown === 'row' && activeRowForDownload === row" (click)="$event.stopPropagation()">
+                      <button (click)="download('csv', 'row')">CSV</button>
+                      <button (click)="download('excel', 'row')">Excel</button>
+                      <button (click)="download('pdf', 'row')">PDF</button>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr *ngIf="paginatedRegisterRows.length === 0">
+              <td [attr.colspan]="canManageUserAccounts ? 10 : 9" class="muted" style="text-align:center; padding:18px;">No data is present.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table class="register-table" *ngIf="activeRegisterKey === 'staff'">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Profile</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Type</th>
+              <th>Department</th>
+              <th>Can login</th>
+              <th>Enabled</th>
+              <th>Joining</th>
+              <th>Salary</th>
+              <th *ngIf="canManageUserAccounts">Active</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of paginatedRegisterRows; let i = index" [class.row-dropdown-open]="showDownloadDropdown === 'row' && activeRowForDownload === row">
+              <td>{{ ((registerPage - 1) * registerPageSize) + i + 1 }}</td>
+              <td>
+                <img
+                  *ngIf="row['profileImage']"
+                  [src]="row['profileImage']"
+                  alt="Staff profile"
+                  style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid rgba(148,163,184,.35);"
+                />
+                <span
+                  *ngIf="!row['profileImage']"
+                  style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(16,185,129,.12);font-weight:700;"
+                >
+                  {{ (row['username'] || 'S').charAt(0) | uppercase }}
+                </span>
+              </td>
+              <td>{{ row['username'] }}</td>
+              <td>{{ row['email'] }}</td>
+              <td>{{ row['staffType'] }}</td>
+              <td>{{ row['department'] }}</td>
+              <td>{{ row['canLogin'] ? 'Yes' : 'No' }}</td>
+              <td>{{ row['isActive'] ? 'Yes' : 'No' }}</td>
+              <td>{{ row['joiningDate'] }}</td>
+              <td>{{ row['salary'] }}</td>
+              <td *ngIf="canManageUserAccounts" class="toggle-cell">
+                <label class="register-account-switch">
+                  <input
+                    type="checkbox"
+                    [checked]="!!row['userAccountActive']"
+                    (change)="onUserAccountActiveChange(row, $any($event.target).checked)"
+                    [disabled]="userAccountToggleUserId === row['userId']"
+                  />
+                  <span class="register-account-switch-ui" aria-hidden="true"></span>
+                </label>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn-icon ghost" type="button" title="Edit Staff" (click)="openEditStaff(row)">✎</button>
+                  <button class="btn-icon ghost" type="button" title="Delete Staff" (click)="deleteStaff(row)">🗑</button>
+                  <div class="download-container">
+                    <button class="btn-icon ghost" (click)="toggleDownloadDropdown('row', row, $event)" title="Download Row">↓</button>
+                    <div class="dropdown-menu" *ngIf="showDownloadDropdown === 'row' && activeRowForDownload === row" (click)="$event.stopPropagation()">
+                      <button (click)="download('csv', 'row')">CSV</button>
+                      <button (click)="download('excel', 'row')">Excel</button>
+                      <button (click)="download('pdf', 'row')">PDF</button>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr *ngIf="paginatedRegisterRows.length === 0">
+              <td [attr.colspan]="canManageUserAccounts ? 12 : 11" class="muted" style="text-align:center; padding:18px;">No data is present.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table class="register-table" *ngIf="activeRegisterKey !== 'doctor' && activeRegisterKey !== 'patients' && activeRegisterKey !== 'staff'">
+          <thead>
+            <tr class="filter-row">
+              <th *ngFor="let key of activeRegisterColumns">
+                <input
+                  type="text"
+                  [placeholder]="'Filter ' + key"
+                  [(ngModel)]="columnFilters[key]"
+                  (input)="applyFilters()"
+                  class="column-filter"
+                />
+              </th>
+              <th>Action</th>
+            </tr>
+            <tr>
+              <th *ngFor="let key of activeRegisterColumns">{{ key | titlecase }}</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of paginatedRegisterRows" [class.row-dropdown-open]="showDownloadDropdown === 'row' && activeRowForDownload === row">
+              <td *ngFor="let key of getRowKeys(row)">{{ row[key] }}</td>
+              <td>
+                <div class="row-actions">
+                  <button
+                    *ngIf="activeRegisterKey === 'doctor'"
+                    class="btn-icon ghost"
+                    type="button"
+                    title="Edit Doctor"
+                    (click)="openEditDoctor(row)"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    *ngIf="activeRegisterKey === 'doctor'"
+                    class="btn-icon ghost"
+                    type="button"
+                    title="Delete Doctor"
+                    (click)="deleteDoctor(row)"
+                  >
+                    🗑
+                  </button>
+                  <button
+                    *ngIf="activeRegisterKey === 'patients'"
+                    class="btn-icon ghost"
+                    type="button"
+                    title="Edit Patient"
+                    (click)="openEditPatient(row)"
+                  >
+                    ✎
+                  </button>
+                  <div class="download-container">
+                    <button class="btn-icon ghost" (click)="toggleDownloadDropdown('row', row, $event)" title="Download Row">
+                      ↓
+                    </button>
+                    <div class="dropdown-menu" *ngIf="showDownloadDropdown === 'row' && activeRowForDownload === row" (click)="$event.stopPropagation()">
+                      <button (click)="download('csv', 'row')">CSV</button>
+                      <button (click)="download('excel', 'row')">Excel</button>
+                      <button (click)="download('pdf', 'row')">PDF</button>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr *ngIf="paginatedRegisterRows.length === 0">
+              <td [attr.colspan]="activeRegisterColumns.length + 1" class="muted" style="text-align:center; padding:18px;">No data is present.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <footer class="table-footer" aria-label="Register table pagination">
+        <div class="table-footer-inner">
+          <span class="table-footer-meta">Page {{ registerPage }} of {{ registerTotalPages }}</span>
+          <div class="table-footer-controls">
+            <button class="table-footer-btn" type="button" (click)="changeRegisterPage('prev')" [disabled]="registerPage <= 1">Previous</button>
+            <button class="table-footer-btn" type="button" (click)="changeRegisterPage('next')" [disabled]="registerPage >= registerTotalPages">Next</button>
+            <input type="number" min="1" [max]="registerTotalPages" [(ngModel)]="registerPageInput" class="table-footer-input" title="Go to page" />
+            <button class="table-footer-btn primary" type="button" (click)="jumpRegisterPage()">Go</button>
+          </div>
+        </div>
+      </footer>
+
+      <div class="doctor-modal-backdrop" *ngIf="doctorFormOpen">
+        <div class="doctor-modal">
+          <h3>{{ editingDoctorId ? 'Modify Doctor' : 'Create Doctor' }}</h3>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" [(ngModel)]="doctorForm.username" placeholder="Doctor username" />
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" [(ngModel)]="doctorForm.email" placeholder="doctor@email.com" />
+            </div>
+            <div class="form-group">
+              <label>Specialization</label>
+              <input type="text" [(ngModel)]="doctorForm.specialization" placeholder="Orthodontics" />
+            </div>
+            <div class="form-group">
+              <label>Experience (years)</label>
+              <input type="number" [(ngModel)]="doctorForm.experience" placeholder="5" />
+            </div>
+            <div class="form-group">
+              <label>Qualification</label>
+              <input type="text" [(ngModel)]="doctorForm.qualification" placeholder="BDS, MDS" />
+            </div>
+            <div class="form-group">
+              <label>Consultation Fee</label>
+              <input type="number" [(ngModel)]="doctorForm.consultationFee" placeholder="500" />
+            </div>
+            <div class="form-group">
+              <label>Available Time Slots</label>
+              <div class="slot-grid">
+                <button
+                  type="button"
+                  class="btn-icon ghost slot-btn"
+                  *ngFor="let slot of doctorTimeSlots"
+                  [class.active]="isDoctorTimeSlotSelected(slot)"
+                  (click)="toggleDoctorTimeSlot(slot)"
+                >
+                  {{ slot }}
+                </button>
+              </div>
+              <div class="muted">Selected: {{ doctorForm.availableTime || 'None' }}</div>
+            </div>
+            <div class="form-group">
+              <label>Profile Image</label>
+              <input type="file" accept="image/*" (change)="onDoctorImageSelected($event)" />
+            </div>
+          </div>
+
+          <div *ngIf="doctorFormError" class="save-error">{{ doctorFormError }}</div>
+
+          <div class="doctor-modal-actions">
+            <button class="btn-primary" type="button" [disabled]="doctorSubmitting" (click)="saveDoctor()">
+              {{ doctorSubmitting ? 'Saving...' : (editingDoctorId ? 'Update Doctor' : 'Create Doctor') }}
+            </button>
+              <button class="btn-icon ghost" type="button" (click)="closeDoctorForm()">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="doctor-modal-backdrop" *ngIf="staffFormOpen">
+        <div class="doctor-modal">
+          <h3>{{ editingStaffId ? 'Modify Staff' : 'Create Staff' }}</h3>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" [(ngModel)]="staffForm.username" placeholder="Staff username" />
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" [(ngModel)]="staffForm.email" placeholder="staff@email.com" />
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" [(ngModel)]="staffForm.password" autocomplete="new-password" placeholder="Enter password" />
+            </div>
+            <div class="form-group">
+              <label>Confirm password</label>
+              <input type="password" [(ngModel)]="staffForm.confirmPassword" autocomplete="new-password" placeholder="Confirm password" />
+            </div>
+            <p class="muted" *ngIf="editingStaffId" style="margin:-8px 0 4px;font-size:12px;">Leave password blank to keep the current password.</p>
+            <div class="form-group">
+              <label>Staff type</label>
+              <select [(ngModel)]="staffForm.staffType">
+                <option *ngFor="let opt of staffTypeOptions" [ngValue]="opt.value">{{ opt.label }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Department</label>
+              <input type="text" [(ngModel)]="staffForm.department" placeholder="Front office" />
+            </div>
+            <div class="form-group inline-boolean">
+              <label class="inline-switch">
+                <input type="checkbox" [(ngModel)]="staffForm.canLogin" />
+                <span class="switch-slider"></span>
+                Can log in (app login allowed)
+              </label>
+            </div>
+            <div class="form-group inline-boolean">
+              <label class="inline-switch">
+                <input type="checkbox" [(ngModel)]="staffForm.isActive" />
+                <span class="switch-slider"></span>
+                Active (employed)
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Joining date</label>
+              <input type="date" [(ngModel)]="staffForm.joiningDate" />
+            </div>
+            <div class="form-group">
+              <label>Salary</label>
+              <input type="number" [(ngModel)]="staffForm.salary" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea [(ngModel)]="staffForm.notes" rows="2" placeholder="Internal notes"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Profile Image</label>
+              <input type="file" accept="image/*" (change)="onStaffImageSelected($event)" />
+            </div>
+          </div>
+          <div *ngIf="staffFormError" class="save-error">{{ staffFormError }}</div>
+          <div class="doctor-modal-actions">
+            <button class="btn-primary" type="button" [disabled]="staffSubmitting" (click)="saveStaff()">
+              {{ staffSubmitting ? 'Saving...' : (editingStaffId ? 'Update Staff' : 'Create Staff') }}
+            </button>
+            <button class="btn-icon ghost" type="button" (click)="closeStaffForm()">Close</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="register-page" *ngIf="active === 'patients-edit'" @cardStagger>
+      <div class="register-header">
+        <div>
+          <h2>Modify Patient</h2>
+          <p>Update patient details on a dedicated page.</p>
+        </div>
+        <button class="btn-icon ghost" type="button" (click)="closePatientForm()">Back</button>
+      </div>
+
+      <div class="setting-card">
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" [(ngModel)]="patientForm.username" placeholder="Patient username" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" [(ngModel)]="patientForm.email" placeholder="patient@email.com" />
+          </div>
+          <div class="form-group">
+            <label>Patient Email</label>
+            <input type="email" [(ngModel)]="patientForm.patientEmail" placeholder="patient profile email" />
+          </div>
+          <div class="form-group">
+            <label>Blood Group</label>
+            <input type="text" [(ngModel)]="patientForm.bloodGroup" placeholder="O+" />
+          </div>
+          <div class="form-group">
+            <label>Gender</label>
+            <select [(ngModel)]="patientForm.gender">
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date of Birth</label>
+            <input type="date" [(ngModel)]="patientForm.dateOfBirth" />
+          </div>
+          <div class="form-group">
+            <label>Mobile</label>
+            <input type="text" [(ngModel)]="patientForm.mobile" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Alternate Mobile</label>
+            <input type="text" [(ngModel)]="patientForm.alternateMobile" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Allergies</label>
+            <input type="text" [(ngModel)]="patientForm.allergies" placeholder="Penicillin" />
+          </div>
+          <div class="form-group">
+            <label>Emergency Contact</label>
+            <input type="text" [(ngModel)]="patientForm.emergencyContact" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Emergency Contact Name</label>
+            <input type="text" [(ngModel)]="patientForm.emergencyContactName" placeholder="Full name" />
+          </div>
+          <div class="form-group">
+            <label>Emergency Contact Number</label>
+            <input type="text" [(ngModel)]="patientForm.emergencyContactNumber" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Address Line 1</label>
+            <input type="text" [(ngModel)]="patientForm.addressLine1" placeholder="Street / House no." />
+          </div>
+          <div class="form-group">
+            <label>Address Line 2</label>
+            <input type="text" [(ngModel)]="patientForm.addressLine2" placeholder="Area / Landmark" />
+          </div>
+          <div class="form-group">
+            <label>City</label>
+            <input type="text" [(ngModel)]="patientForm.city" />
+          </div>
+          <div class="form-group">
+            <label>State</label>
+            <input type="text" [(ngModel)]="patientForm.state" />
+          </div>
+          <div class="form-group">
+            <label>Pincode</label>
+            <input type="text" [(ngModel)]="patientForm.pincode" />
+          </div>
+          <div class="form-group">
+            <label>Medical History</label>
+            <textarea [(ngModel)]="patientForm.medicalHistory" rows="3" placeholder="Notes, prior conditions, ongoing medication"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Profile Image</label>
+            <input type="file" accept="image/*" (change)="onPatientImageSelected($event)" />
+            <img
+              *ngIf="patientForm.profileImage"
+              [src]="patientForm.profileImage"
+              alt="Patient profile preview"
+              style="margin-top:8px; width:90px; height:90px; object-fit:cover; border-radius:10px; border:1px solid rgba(148,163,184,.35);"
+            />
+          </div>
+        </div>
+
+        <div *ngIf="patientFormError" class="save-error">{{ patientFormError }}</div>
+        <div class="doctor-modal-actions" style="margin-top:12px;">
+          <button class="btn-primary" type="button" [disabled]="patientSubmitting" (click)="savePatient()">
+            {{ patientSubmitting ? 'Saving...' : 'Update Patient' }}
+          </button>
+        </div>
+        <p class="muted" style="margin-top:14px; font-size:13px;">
+          Medical file uploads are managed under <strong>Document Management › Medical Records</strong>.
+        </p>
+      </div>
+    </section>
+
+    <section class="register-page" *ngIf="active === 'patients-create'" @cardStagger>
+      <div class="register-header">
+        <div>
+          <h2>Create Patient</h2>
+          <p>Add a new patient on a dedicated page.</p>
+        </div>
+        <button class="btn-icon ghost" type="button" (click)="closePatientForm()">Back</button>
+      </div>
+
+      <div class="setting-card">
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" [(ngModel)]="patientForm.username" placeholder="Patient username" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" [(ngModel)]="patientForm.email" placeholder="patient@email.com" />
+          </div>
+          <div class="form-group">
+            <label>Patient Email</label>
+            <input type="email" [(ngModel)]="patientForm.patientEmail" placeholder="patient profile email" />
+          </div>
+          <div class="form-group">
+            <label>Blood Group</label>
+            <input type="text" [(ngModel)]="patientForm.bloodGroup" placeholder="O+" />
+          </div>
+          <div class="form-group">
+            <label>Gender</label>
+            <select [(ngModel)]="patientForm.gender">
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date of Birth</label>
+            <input type="date" [(ngModel)]="patientForm.dateOfBirth" />
+          </div>
+          <div class="form-group">
+            <label>Mobile</label>
+            <input type="text" [(ngModel)]="patientForm.mobile" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Alternate Mobile</label>
+            <input type="text" [(ngModel)]="patientForm.alternateMobile" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Allergies</label>
+            <input type="text" [(ngModel)]="patientForm.allergies" placeholder="Penicillin" />
+          </div>
+          <div class="form-group">
+            <label>Emergency Contact</label>
+            <input type="text" [(ngModel)]="patientForm.emergencyContact" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Emergency Contact Name</label>
+            <input type="text" [(ngModel)]="patientForm.emergencyContactName" placeholder="Full name" />
+          </div>
+          <div class="form-group">
+            <label>Emergency Contact Number</label>
+            <input type="text" [(ngModel)]="patientForm.emergencyContactNumber" placeholder="+91xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Address Line 1</label>
+            <input type="text" [(ngModel)]="patientForm.addressLine1" placeholder="Street / House no." />
+          </div>
+          <div class="form-group">
+            <label>Address Line 2</label>
+            <input type="text" [(ngModel)]="patientForm.addressLine2" placeholder="Area / Landmark" />
+          </div>
+          <div class="form-group">
+            <label>City</label>
+            <input type="text" [(ngModel)]="patientForm.city" />
+          </div>
+          <div class="form-group">
+            <label>State</label>
+            <input type="text" [(ngModel)]="patientForm.state" />
+          </div>
+          <div class="form-group">
+            <label>Pincode</label>
+            <input type="text" [(ngModel)]="patientForm.pincode" />
+          </div>
+          <div class="form-group">
+            <label>Medical History</label>
+            <textarea [(ngModel)]="patientForm.medicalHistory" rows="3" placeholder="Notes, prior conditions, ongoing medication"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Profile Image</label>
+            <input type="file" accept="image/*" (change)="onPatientImageSelected($event)" />
+          </div>
+        </div>
+
+        <div *ngIf="patientFormError" class="save-error">{{ patientFormError }}</div>
+        <div class="doctor-modal-actions" style="margin-top:12px;">
+          <button class="btn-primary" type="button" [disabled]="patientSubmitting" (click)="savePatient()">
+            {{ patientSubmitting ? 'Saving...' : 'Create Patient' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="register-page" *ngIf="active === 'doctor-report'" @cardStagger>
+      <div class="register-header">
+        <div>
+          <h2>Doctor — Report</h2>
+          <p>Appointments linked to the selected doctor (or all doctors).</p>
+        </div>
+        <div class="register-actions" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div class="form-group" style="margin:0; min-width:200px;">
+            <label>Doctor</label>
+            <select [(ngModel)]="reportDoctorId">
+              <option [ngValue]="null">All doctors</option>
+              <option *ngFor="let d of activeDoctorRows" [ngValue]="d.id">{{ d.username }}</option>
+            </select>
+          </div>
+          <button class="btn-icon ghost" type="button" (click)="loadReportAppointmentsAll()" [disabled]="reportAnalyticsLoading">Refresh</button>
+        </div>
+      </div>
+      <p class="muted" *ngIf="reportAnalyticsLoading" style="margin-bottom:12px;">Loading appointments…</p>
+      <div class="table-wrap">
+        <table class="register-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Patient</th>
+              <th>Doctor</th>
+              <th>Status</th>
+              <th>Title</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of doctorReportFilteredAppointments">
+              <td>{{ row.appointmentDate }}</td>
+              <td>{{ row.startTime }} – {{ row.endTime }}</td>
+              <td>{{ row.patientName }}</td>
+              <td>{{ row.doctorName }}</td>
+              <td>{{ row.status }}</td>
+              <td>{{ row.title }}</td>
+            </tr>
+            <tr *ngIf="!reportAnalyticsLoading && doctorReportFilteredAppointments.length === 0">
+              <td colspan="6" class="muted" style="text-align:center; padding:20px;">No appointment rows for this filter.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="register-page" *ngIf="active === 'patients-report'" @cardStagger>
+      <div class="register-header">
+        <div>
+          <h2>Patients — Report</h2>
+          <p>Medical record documents stored for patients (from document management).</p>
+        </div>
+        <button class="btn-icon ghost" type="button" (click)="loadPatientsReport()" [disabled]="patientsReportLoading">Refresh</button>
+      </div>
+      <p class="muted" *ngIf="patientsReportLoading" style="margin-bottom:12px;">Loading records…</p>
+      <div class="table-wrap">
+        <table class="register-table">
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>File</th>
+              <th>Document type</th>
+              <th>Title</th>
+              <th>Uploaded</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of patientsReportRows">
+              <td>{{ row.patientName }}</td>
+              <td>{{ row.fileName }}</td>
+              <td>{{ row.documentType || '—' }}</td>
+              <td>{{ row.title || '—' }}</td>
+              <td>{{ formatDocDate(row.createdDate) }}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn-icon ghost" type="button" (click)="openDocMgmtPreview(row)">View</button>
+                  <button class="btn-icon ghost" type="button" (click)="deletePatientReportAttachment(row)">Delete</button>
+                </div>
+              </td>
+            </tr>
+            <tr *ngIf="!patientsReportLoading && patientsReportRows.length === 0">
+              <td colspan="6" class="muted" style="text-align:center; padding:20px;">No medical record files found.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="register-page" *ngIf="active === 'appointment-report'" @cardStagger>
+      <div class="register-header">
+        <div>
+          <h2>Appointment — Analytics</h2>
+          <p>Charts are built from all appointments in the system.</p>
+        </div>
+        <button class="btn-icon ghost" type="button" (click)="loadReportAppointmentsAll()" [disabled]="reportAnalyticsLoading">Refresh</button>
+      </div>
+      <p class="muted" *ngIf="reportAnalyticsLoading" style="margin-bottom:12px;">Loading data…</p>
+
+      <div class="report-analytics-grid">
+        <article class="glass-card report-chart-card">
+          <div class="mini-title">By status</div>
+          <div class="fin-hbar-list">
+            <div class="fin-hbar-row" *ngFor="let row of appointmentAnalyticsByStatus">
+              <span class="fin-hbar-label">{{ row.label }}</span>
+              <div class="fin-hbar-track"><span class="fin-hbar-fill report-hbar-a" [style.width.%]="row.pct"></span></div>
+              <span class="fin-hbar-val">{{ row.count }}</span>
+            </div>
+          </div>
+        </article>
+        <article class="glass-card report-chart-card">
+          <div class="mini-title">By doctor (top)</div>
+          <div class="fin-hbar-list">
+            <div class="fin-hbar-row" *ngFor="let row of appointmentAnalyticsByDoctor">
+              <span class="fin-hbar-label">{{ row.label }}</span>
+              <div class="fin-hbar-track"><span class="fin-hbar-fill report-hbar-b" [style.width.%]="row.pct"></span></div>
+              <span class="fin-hbar-val">{{ row.count }}</span>
+            </div>
+          </div>
+        </article>
+        <article class="glass-card report-chart-card">
+          <div class="mini-title">By month (last 12)</div>
+          <div class="fin-hbar-list">
+            <div class="fin-hbar-row" *ngFor="let row of appointmentAnalyticsByMonth">
+              <span class="fin-hbar-label">{{ row.label }}</span>
+              <div class="fin-hbar-track"><span class="fin-hbar-fill report-hbar-c" [style.width.%]="row.pct"></span></div>
+              <span class="fin-hbar-val">{{ row.count }}</span>
+            </div>
+          </div>
+        </article>
+        <article class="glass-card report-chart-card">
+          <div class="mini-title">By weekday</div>
+          <div class="fin-hbar-list">
+            <div class="fin-hbar-row" *ngFor="let row of appointmentAnalyticsByWeekday">
+              <span class="fin-hbar-label">{{ row.label }}</span>
+              <div class="fin-hbar-track"><span class="fin-hbar-fill report-hbar-d" [style.width.%]="row.pct"></span></div>
+              <span class="fin-hbar-val">{{ row.count }}</span>
+            </div>
+          </div>
+        </article>
+        <article class="glass-card report-chart-card">
+          <div class="mini-title">By start hour</div>
+          <div class="fin-hbar-list">
+            <div class="fin-hbar-row" *ngFor="let row of appointmentAnalyticsByHour">
+              <span class="fin-hbar-label">{{ row.label }}</span>
+              <div class="fin-hbar-track"><span class="fin-hbar-fill report-hbar-e" [style.width.%]="row.pct"></span></div>
+              <span class="fin-hbar-val">{{ row.count }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section
+      class="module-empty"
+      *ngIf="
+        !isRegisterPage &&
+        active !== 'dashboard' &&
+        active !== 'settings' &&
+        active !== 'patients-edit' &&
+        active !== 'patients-create' &&
+        active !== 'doctor-report' &&
+        active !== 'patients-report' &&
+        active !== 'appointment-report' &&
+        active !== 'inventory-register' &&
+        active !== 'inventory-report' &&
+        !isTransactionsModule &&
+        !isDocumentsModule
+      "
+      @cardStagger
+    >
+      <div class="empty-title">{{ activeLabel }}</div>
+      <div class="empty-sub muted">UI scaffold ready. Next step is to wire real pages and API.</div>
+    </section>
+
+    <section *ngIf="active === 'settings'" @cardStagger>
+      <div class="settings-container">
+        <div class="profile-header">
+          <div class="profile-pic-large" [class.has-image]="!!profilePic">
+            <img *ngIf="profilePic" [src]="profilePic" alt="Profile Picture" />
+            <div *ngIf="!profilePic" class="avatar-fallback">👤</div>
+            <input type="file" accept="image/*" (change)="onFileSelected($event)" id="profile-pic-input" />
+            <label for="profile-pic-input" class="upload-btn">Change Photo</label>
+          </div>
+          <h1>{{ user.username || 'User' }}</h1>
+          <p>{{ user.email || 'user@example.com' }}</p>
+        </div>
+
+        <div class="settings-tabs">
+          <button class="tab" [class.active]="activeSettingsTab === 'profile'" (click)="setSettingsTab('profile')">Profile</button>
+          <button class="tab" [class.active]="activeSettingsTab === 'appearance'" (click)="setSettingsTab('appearance')">Appearance</button>
+          <button class="tab" [class.active]="activeSettingsTab === 'notifications'" (click)="setSettingsTab('notifications')">Notifications</button>
+          <button class="tab" [class.active]="activeSettingsTab === 'organisation'" (click)="setSettingsTab('organisation')">Organisation</button>
+        </div>
+
+        <div *ngIf="activeSettingsTab === 'profile'" class="settings-grid">
+          <div class="setting-card">
+            <h3>Profile Information</h3>
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" [(ngModel)]="user.username" placeholder="Enter username" />
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" [(ngModel)]="user.email" placeholder="Enter email" />
+            </div>
+            <button class="btn-primary" (click)="saveUser()">Save Changes</button>
+          </div>
+        </div>
+
+        <div *ngIf="activeSettingsTab === 'appearance'" class="settings-grid">
+          <div class="setting-card">
+            <h3>Appearance</h3>
+            <div class="theme-setting">
+              <span>Theme</span>
+              <div class="toggle-switch">
+                <input type="checkbox" id="theme-toggle" [checked]="theme === 'dark'" (change)="toggleTheme()" />
+                <label for="theme-toggle" class="toggle-slider"></label>
+              </div>
+              <span class="theme-label">{{ theme === 'light' ? 'Light' : 'Dark' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="activeSettingsTab === 'organisation'" class="settings-grid">
+          <div class="setting-card organisation-form-card">
+            <div class="settings-card-head">
+              <h3>Organisation Settings</h3>
+              <span class="pill" *ngIf="orgLoading">Loading...</span>
+            </div>
+            <div class="form-group">
+              <label>Organisation Code</label>
+              <input type="text" [(ngModel)]="organisation.code" placeholder="DENTAL_CLINIC" />
+            </div>
+            <div class="form-group">
+              <label>Name</label>
+              <input type="text" [(ngModel)]="organisation.name" placeholder="Organisation name" />
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea [(ngModel)]="organisation.description" placeholder="Description" rows="4"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Phone Number</label>
+              <input type="tel" [(ngModel)]="organisation.phone" placeholder="Phone number" />
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" [(ngModel)]="organisation.email" placeholder="Email address" />
+            </div>
+            <div class="form-group">
+              <label>Address</label>
+              <input type="text" [(ngModel)]="organisation.address" placeholder="Street address" />
+            </div>
+            <div class="form-group">
+              <label>Website URL</label>
+              <input type="url" [(ngModel)]="organisation.website" placeholder="https://" />
+            </div>
+            <div class="form-group inline-boolean">
+              <label class="inline-switch">
+                <input type="checkbox" [(ngModel)]="organisation.addSeal" [ngModelOptions]="{standalone: true}" />
+                <span class="switch-slider"></span>
+                Add Seal to PDFs
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Logo</label>
+              <input type="file" accept="image/*" (change)="onOrganisationImageSelected('logo', $event)" />
+              <img *ngIf="organisation.logo" [src]="organisation.logo" alt="Logo preview" class="org-image-preview" />
+            </div>
+            <div class="form-group">
+              <label>Header Image</label>
+              <input type="file" accept="image/*" (change)="onOrganisationImageSelected('headerImage', $event)" />
+              <img *ngIf="organisation.headerImage" [src]="organisation.headerImage" alt="Header preview" class="org-image-preview" />
+            </div>
+            <div class="form-group">
+              <label>Footer Image</label>
+              <input type="file" accept="image/*" (change)="onOrganisationImageSelected('footerImage', $event)" />
+              <img *ngIf="organisation.footerImage" [src]="organisation.footerImage" alt="Footer preview" class="org-image-preview" />
+            </div>
+            <div class="form-group">
+              <label>Seal Image</label>
+              <input type="file" accept="image/*" (change)="onOrganisationImageSelected('sealImage', $event)" />
+              <img *ngIf="organisation.sealImage" [src]="organisation.sealImage" alt="Seal preview" class="org-image-preview" />
+            </div>
+            <div class="org-actions">
+              <button class="btn-primary" (click)="saveOrganisation()" [disabled]="orgSaving || orgLoading">
+                {{ orgSaving ? 'Saving...' : 'Save Organisation' }}
+              </button>
+              <span class="save-success" *ngIf="orgSaveMessage">{{ orgSaveMessage }}</span>
+              <span class="save-error" *ngIf="orgSaveError">{{ orgSaveError }}</span>
+            </div>
+          </div>
+
+          <div class="org-preview-card">
+            <h4>Organisation Preview</h4>
+            <div class="org-preview-meta">
+              <p>Code: {{ organisation.code || 'DENTAL_CLINIC' }}</p>
+              <strong>{{ organisation.name || 'Organisation Name' }}</strong>
+              <p>{{ organisation.description || 'Organisation description will appear here.' }}</p>
+              <p>Phone: {{ organisation.phone || 'N/A' }}</p>
+              <p>Email: {{ organisation.email || 'N/A' }}</p>
+              <p>Address: {{ organisation.address || 'N/A' }}</p>
+              <p>Website: {{ organisation.website || 'N/A' }}</p>
+            </div>
+            <div class="org-preview-images">
+              <div class="org-preview-image" *ngIf="organisation.logo">
+                <span>Logo</span>
+                <img [src]="organisation.logo" alt="Logo" />
+              </div>
+              <div class="org-preview-image" *ngIf="organisation.headerImage">
+                <span>Header</span>
+                <img [src]="organisation.headerImage" alt="Header" />
+              </div>
+              <div class="org-preview-image" *ngIf="organisation.footerImage">
+                <span>Footer</span>
+                <img [src]="organisation.footerImage" alt="Footer" />
+              </div>
+              <div class="org-preview-image" *ngIf="organisation.sealImage">
+                <span>Seal</span>
+                <img [src]="organisation.sealImage" alt="Seal" />
+              </div>
+            </div>
+
+            <div style="margin-top:16px;">
+              <h4 style="margin:0 0 10px;">PDF Preview</h4>
+              <div style="position:relative; width:100%; max-width:420px; height:560px; border:1px solid rgba(148,163,184,.35); border-radius:10px; overflow:hidden; background:#fff; box-shadow:0 8px 22px -14px rgba(15,23,42,.45);">
+                <img *ngIf="organisation.headerImage" [src]="organisation.headerImage" alt="PDF header" style="position:absolute;top:0;left:0;width:100%;height:72px;object-fit:cover;" />
+                <div style="position:absolute; top:88px; left:16px; right:16px; bottom:72px; overflow:hidden; color:#0f172a;">
+                  <div style="font-weight:800; font-size:14px; margin-bottom:8px;">Patient Treatment Summary</div>
+                  <div style="font-size:12px; color:#64748b; margin-bottom:12px;">Preview of generated PDF layout using current organisation assets.</div>
+                  <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <tr>
+                      <th style="text-align:left; padding:6px; border:1px solid #e5e7eb;">Field</th>
+                      <th style="text-align:left; padding:6px; border:1px solid #e5e7eb;">Value</th>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px; border:1px solid #e5e7eb;">Patient</td>
+                      <td style="padding:6px; border:1px solid #e5e7eb;">John Doe</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px; border:1px solid #e5e7eb;">Doctor</td>
+                      <td style="padding:6px; border:1px solid #e5e7eb;">Dr. Alice</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px; border:1px solid #e5e7eb;">Procedure</td>
+                      <td style="padding:6px; border:1px solid #e5e7eb;">Dental Cleaning</td>
+                    </tr>
+                  </table>
+                </div>
+                <img *ngIf="organisation.footerImage" [src]="organisation.footerImage" alt="PDF footer" style="position:absolute;left:0;bottom:0;width:100%;height:62px;object-fit:cover;" />
+                <img *ngIf="organisation.addSeal && organisation.sealImage" [src]="organisation.sealImage" alt="Seal" style="position:absolute;right:14px;bottom:76px;width:72px;height:72px;object-fit:contain;opacity:.9;" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="activeSettingsTab === 'notifications'" class="notifications-panel">
+          <h3>Notification settings</h3>
+          <p class="sub-text">We may still send important service notifications outside of your preferences.</p>
+
+          <div class="notif-group">
+            <div class="notif-label">
+              <strong>Email</strong>
+              <span>Notifications for incoming email events and important email updates</span>
+            </div>
+            <div class="notif-options">
+              <label class="inline-switch">
+                <input type="checkbox" [checked]="notificationSettings.email.push" (change)="updateNotification('email','push',$any($event.target).checked)" />
+                <span class="switch-slider"></span>
+                Push
+              </label>
+              <label class="inline-switch">
+                <input type="checkbox" [checked]="notificationSettings.email.email" (change)="updateNotification('email','email',$any($event.target).checked)" />
+                <span class="switch-slider"></span>
+                Email
+              </label>
+              <label class="inline-switch">
+                <input type="checkbox" [checked]="notificationSettings.email.sms" (change)="updateNotification('email','sms',$any($event.target).checked)" />
+                <span class="switch-slider"></span>
+                SMS
+              </label>
+            </div>
+          </div>
+
+          <div class="notif-group">
+            <div class="notif-label">
+              <strong>Message</strong>
+              <span>Notifications for direct messages and conversation activity</span>
+            </div>
+            <div class="notif-options">
+              <label class="inline-switch">
+                <input type="checkbox" [checked]="notificationSettings.message.push" (change)="updateNotification('message','push',$any($event.target).checked)" />
+                <span class="switch-slider"></span>
+                Push
+              </label>
+              <label class="inline-switch">
+                <input type="checkbox" [checked]="notificationSettings.message.email" (change)="updateNotification('message','email',$any($event.target).checked)" />
+                <span class="switch-slider"></span>
+                Email
+              </label>
+              <label class="inline-switch">
+                <input type="checkbox" [checked]="notificationSettings.message.sms" (change)="updateNotification('message','sms',$any($event.target).checked)" />
+                <span class="switch-slider"></span>
+                SMS
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+

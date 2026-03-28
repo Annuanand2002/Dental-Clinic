@@ -1,0 +1,21 @@
+<router-outlet></router-outlet>
+
+<div @appToast class="app-toast-host" *ngIf="toast$ | async as t">
+  <div
+    class="app-toast"
+    [class.app-toast--success]="t.type === 'success'"
+    [class.app-toast--error]="t.type === 'error'"
+    role="status"
+    aria-live="polite"
+  >
+    {{ t.message }}
+  </div>
+</div>
+
+<div class="route-loading-overlay" *ngIf="isNavigating">
+  <div class="route-loading-card">
+    <div class="route-spinner" aria-hidden="true"></div>
+    <div class="route-loading-title">Loading</div>
+    <div class="route-loading-sub">Preparing your next screen...</div>
+  </div>
+</div>

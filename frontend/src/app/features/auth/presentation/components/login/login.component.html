@@ -1,0 +1,88 @@
+<div class="login-page">
+  <div class="bg-shape bg-shape-1"></div>
+  <div class="bg-shape bg-shape-2"></div>
+  <div class="bg-shape bg-shape-3"></div>
+
+  <div class="login-container" @cardEnter [@shakeOnError]="shakeState">
+    <section class="login-brand">
+      <div class="brand-content">
+        <div class="brand-icon"><i class="fas fa-tooth"></i></div>
+        <h1>DentalClinic<span>Pro</span></h1>
+        <p>Precision care, modern smile. Access your dental practice management dashboard securely.</p>
+        <ul class="feature-list">
+          <li><i class="fas fa-calendar-check"></i> Smart Appointment Scheduling</li>
+          <li><i class="fas fa-chart-line"></i> Patient Analytics &amp; History</li>
+          <li><i class="fas fa-lock"></i> HIPAA Compliant Security</li>
+        </ul>
+      </div>
+      <div class="tooth-pattern"><i class="fas fa-tooth"></i></div>
+    </section>
+
+    <section class="login-form-section">
+      <div class="form-header">
+        <h2>Welcome back</h2>
+        <p>Sign in to access your dental dashboard</p>
+      </div>
+
+      <div class="message-zone">
+        <div class="error-message" *ngIf="errorMessage" @fadeDown>
+          <i class="fas fa-exclamation-triangle"></i>
+          <span>{{ errorMessage }}</span>
+        </div>
+        <div class="success-message" *ngIf="successMessage" @fadeDown>
+          <i class="fas fa-circle-check"></i>
+          <span>{{ successMessage }}</span>
+        </div>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="submit()">
+        <div class="input-group">
+          <i class="fas fa-envelope input-icon"></i>
+          <input
+            type="text"
+            class="input-field"
+            formControlName="usernameOrEmail"
+            placeholder="Email or Username"
+            autocomplete="username"
+            (input)="onInputChange()"
+            [class.invalid]="usernameOrEmailCtrl?.invalid && (usernameOrEmailCtrl?.touched || usernameOrEmailCtrl?.dirty)"
+          />
+        </div>
+        <div class="field-error" *ngIf="usernameOrEmailCtrl?.hasError('required') && (usernameOrEmailCtrl?.touched || usernameOrEmailCtrl?.dirty)">Please enter your email or username.</div>
+        <div class="field-error" *ngIf="usernameOrEmailCtrl?.hasError('invalidEmail') && (usernameOrEmailCtrl?.touched || usernameOrEmailCtrl?.dirty)">Please enter a valid email address (e.g., name@example.com).</div>
+
+        <div class="input-group">
+          <i class="fas fa-lock input-icon"></i>
+          <input
+            type="password"
+            class="input-field"
+            formControlName="password"
+            placeholder="Password"
+            autocomplete="current-password"
+            (input)="onInputChange()"
+            [class.invalid]="passwordCtrl?.invalid && (passwordCtrl?.touched || passwordCtrl?.dirty)"
+          />
+        </div>
+        <div class="field-error" *ngIf="passwordCtrl?.hasError('required') && (passwordCtrl?.touched || passwordCtrl?.dirty)">Password cannot be empty.</div>
+        <div class="field-error" *ngIf="passwordCtrl?.hasError('minlength') && (passwordCtrl?.touched || passwordCtrl?.dirty)">Password must be at least 4 characters.</div>
+
+        <div class="forgot-row">
+          <a href="#" class="forgot-link" (click)="forgotPassword($event)"><i class="fas fa-key"></i> Forgot password?</a>
+        </div>
+
+        <button type="submit" class="login-btn" [class.loading]="loading" [disabled]="loading">
+          <span class="btn-text">{{ loading ? 'Signing in...' : 'Sign In' }}</span>
+          <i class="fas fa-arrow-right"></i>
+          <span class="spinner"></span>
+        </button>
+      </form>
+
+      <div class="demo-note">
+        <i class="fas fa-flask"></i> Try your real clinic credentials configured in backend
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" *ngIf="toastMessage" @fadeDown>{{ toastMessage }}</div>
+</div>
+
